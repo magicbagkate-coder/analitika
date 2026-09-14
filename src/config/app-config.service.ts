@@ -34,6 +34,26 @@ export class AppConfigService {
     return this.requireEnv('TELEGRAM_CHAT_ID');
   }
 
+  getPostgresHost(): string {
+    return this.configService.get<string>('POSTGRES_HOST', 'postgres');
+  }
+
+  getPostgresPort(): number {
+    return Number(this.configService.get<string>('POSTGRES_PORT', '5432'));
+  }
+
+  getPostgresUser(): string {
+    return this.requireEnv('POSTGRES_USER');
+  }
+
+  getPostgresPassword(): string {
+    return this.requireEnv('POSTGRES_PASSWORD');
+  }
+
+  getPostgresDatabase(): string {
+    return this.requireEnv('POSTGRES_DB');
+  }
+
   private requireEnv(key: string): string {
     const value = this.configService.get<string>(key);
     if (!value) throw new Error(`Missing required env var: ${key}`);

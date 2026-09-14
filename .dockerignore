@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-scripts
+.git
+.env
+reports
+scripts
+*.log
+*.tsbuildinfo
+.claude

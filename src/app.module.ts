@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BulkTagStatusModule } from './bulk-tag-status/bulk-tag-status.module';
 import { AppConfigModule } from './config/app-config.module';
 import { DailyStatsStoreModule } from './daily-stats-store/daily-stats-store.module';
+import { DatabaseModule } from './database/database.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { OrderSuccessAnalysisModule } from './order-success-analysis/order-success-analysis.module';
 import { SitniksChatModule } from './sitniks-chat/sitniks-chat.module';
@@ -12,7 +13,8 @@ import { SitniksChatUpdateModule } from './sitniks-chat-update/sitniks-chat-upda
 import { SitniksManagersModule } from './sitniks-managers/sitniks-managers.module';
 import { StatusReportModule } from './status-report/status-report.module';
 
-// Docker/DB не используются — см. README.
+// Развёрнуто в Docker (Dockerfile + docker-compose.yml), Postgres подключён через DatabaseModule
+// (2026-09-14) — провизия на будущее, entity под бизнес-данные пока не заведены.
 //
 // SitniksChatPollerModule and DailySummaryModule are deliberately NOT wired in (2026-09-10):
 // StatusReportModule now runs twice a day (16:00 + 23:59, see status-report.constants.ts) and
@@ -33,6 +35,7 @@ import { StatusReportModule } from './status-report/status-report.module';
 @Module({
   imports: [
     AppConfigModule,
+    DatabaseModule,
     DailyStatsStoreModule,
     SitniksChatModule,
     SitniksChatListModule,
