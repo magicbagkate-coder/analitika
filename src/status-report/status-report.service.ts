@@ -8,7 +8,7 @@ import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-cha
 import { TelegramService } from '../telegram/telegram.service';
 import { ANALYSIS_WINDOW_HOURS, TARGET_STATUS, filterToRecentWindow, needsEvaluation } from '../evaluation/evaluation.constants';
 import { formatAttentionBlock, formatChatBlock, formatSummaryBlock } from './status-report-formatter';
-import { QUIET_HOURS_BEFORE_EVALUATING, REPORT_TIMES } from './status-report.constants';
+import { QUIET_HOURS_BEFORE_EVALUATING, REPORT_TIMES, getKyivHourMinute } from './status-report.constants';
 import type { PatternSynthesisResult } from '../evaluation/evaluation.types';
 import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
@@ -48,10 +48,11 @@ export class StatusReportService implements OnModuleInit {
     }, CHECK_INTERVAL_MS);
   }
 
+  /** Checked against Kyiv time explicitly — the host (dev machine or server) may run in any timezone. */
   private async checkAndRun(): Promise<void> {
-    const now = new Date();
-    const isReportTime = REPORT_TIMES.some((time) => time.hour === now.getHours() && time.minute === now.getMinutes());
-    const runKey = `${now.toISOString().slice(0, 10)}T${now.getHours()}:${now.getMinutes()}`;
+    const { hour, minute } = getKyivHourMinute();
+    const isReportTime = REPORT_TIMES.some((time) => time.hour === hour && time.minute === minute);
+    const runKey = `${new Date().toISOString().slice(0, 10)}T${hour}:${minute}`;
     if (!isReportTime || this.lastRunKey === runKey) return;
 
     this.lastRunKey = runKey;
@@ -121,10 +122,10 @@ export class StatusReportService implements OnModuleInit {
     if (attentionBlock.length > 0) await this.trySendToTelegram(attentionBlock);
   }
 
-  /** "HH:MM" in local (Kyiv) time, e.g. "15:45" — matches the scheduled REPORT_TIMES entries. */
+  /** "HH:MM" in Kyiv time, e.g. "15:45" — matches the scheduled REPORT_TIMES entries regardless of host timezone. */
   private formatReportTime(): string {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const { hour, minute } = getKyivHourMinute();
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
   }
 
   /** Telegram isn't configured yet on every deployment — don't let that break the file report. */

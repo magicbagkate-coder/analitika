@@ -4,7 +4,7 @@ import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evalu
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
-import { REPORT_TIMES } from '../status-report/status-report.constants';
+import { REPORT_TIMES, getKyivHourMinute } from '../status-report/status-report.constants';
 import { TelegramService } from '../telegram/telegram.service';
 import { formatSuccessAttentionBlock, formatSuccessBlock, formatSuccessSummary } from './order-success-analysis-formatter';
 import { ORDER_CREATED_STATUS, needsSuccessAnalysis, replaceSuccessTags } from './order-success-analysis.constants';
@@ -44,10 +44,11 @@ export class OrderSuccessAnalysisService implements OnModuleInit {
     }, CHECK_INTERVAL_MS);
   }
 
+  /** Checked against Kyiv time explicitly — the host (dev machine or server) may run in any timezone. */
   private async checkAndRun(): Promise<void> {
-    const now = new Date();
-    const isReportTime = REPORT_TIMES.some((time) => time.hour === now.getHours() && time.minute === now.getMinutes());
-    const runKey = `${now.toISOString().slice(0, 10)}T${now.getHours()}:${now.getMinutes()}`;
+    const { hour, minute } = getKyivHourMinute();
+    const isReportTime = REPORT_TIMES.some((time) => time.hour === hour && time.minute === minute);
+    const runKey = `${new Date().toISOString().slice(0, 10)}T${hour}:${minute}`;
     if (!isReportTime || this.lastRunKey === runKey) return;
 
     this.lastRunKey = runKey;
@@ -165,10 +166,10 @@ export class OrderSuccessAnalysisService implements OnModuleInit {
     }
   }
 
-  /** "HH:MM" in local (Kyiv) time — matches StatusReportService.formatReportTime. */
+  /** "HH:MM" in Kyiv time — matches StatusReportService.formatReportTime, regardless of host timezone. */
   private formatReportTime(): string {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const { hour, minute } = getKyivHourMinute();
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
   }
 
   /** Telegram hiccups shouldn't break the analysis/tagging that already succeeded. */
