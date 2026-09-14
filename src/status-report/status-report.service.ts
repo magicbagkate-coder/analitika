@@ -7,8 +7,9 @@ import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.s
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { ANALYSIS_WINDOW_HOURS, TARGET_STATUS, filterToRecentWindow, needsEvaluation } from '../evaluation/evaluation.constants';
+import { getKyivHourMinute } from '../kyiv-time';
 import { formatAttentionBlock, formatChatBlock, formatSummaryBlock } from './status-report-formatter';
-import { QUIET_HOURS_BEFORE_EVALUATING, REPORT_TIMES, getKyivHourMinute } from './status-report.constants';
+import { QUIET_HOURS_BEFORE_EVALUATING, REPORT_TIMES } from './status-report.constants';
 import type { PatternSynthesisResult } from '../evaluation/evaluation.types';
 import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
@@ -184,16 +185,18 @@ export class StatusReportService implements OnModuleInit {
 
     const recentMessages = filterToRecentWindow(messagesResponse.data, ANALYSIS_WINDOW_HOURS);
     const clientName = chat.userNickName ?? chat.userName;
+    const managerNames = this.collectManagerNames(recentMessages);
     const evaluation = await this.evaluationService.evaluateAndPublish({
       chatId: chat.id,
       existingTags: chat.tags,
       clientName,
+      managerNames,
       messages: recentMessages,
     });
     return {
       chatId: chat.id,
       clientName,
-      managerNames: this.collectManagerNames(recentMessages),
+      managerNames,
       score: evaluation.score,
       purchased: evaluation.purchased,
       goodPoints: evaluation.goodPoints,

@@ -18,6 +18,7 @@ export type EvaluateChatParams = {
   chatId: string;
   existingTags: string[];
   clientName: string;
+  managerNames: string[];
   messages: ChatMessage[];
 };
 

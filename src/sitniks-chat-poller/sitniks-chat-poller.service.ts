@@ -75,17 +75,20 @@ export class SitniksChatPollerService implements OnModuleInit {
     if (messagesResponse.data.length === 0) return;
     if (!needsEvaluation(chat.tags, messagesResponse.data[0]?.id)) return;
 
+    if (chat.assignedManagerId === undefined || chat.assignedManagerId === null) return;
+    const managerName = managerNameById.get(chat.assignedManagerId) ?? `#${chat.assignedManagerId}`;
+
     const evaluation = await this.evaluationService.evaluateAndPublish({
       chatId: chat.id,
       existingTags: chat.tags,
       clientName: chat.userNickName ?? chat.userName,
+      managerNames: [managerName],
       messages: messagesResponse.data,
     });
 
-    if (chat.assignedManagerId === undefined || chat.assignedManagerId === null) return;
     this.dailyStatsStoreService.record({
       managerId: chat.assignedManagerId,
-      managerName: managerNameById.get(chat.assignedManagerId) ?? `#${chat.assignedManagerId}`,
+      managerName,
       score: evaluation.score,
     });
 

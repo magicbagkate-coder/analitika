@@ -4,6 +4,7 @@ import { AppConfigModule } from './config/app-config.module';
 import { DailyStatsStoreModule } from './daily-stats-store/daily-stats-store.module';
 import { DatabaseModule } from './database/database.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
+import { ManagerTrendsModule } from './manager-trends/manager-trends.module';
 import { OrderSuccessAnalysisModule } from './order-success-analysis/order-success-analysis.module';
 import { SitniksChatModule } from './sitniks-chat/sitniks-chat.module';
 import { SitniksChatListModule } from './sitniks-chat-list/sitniks-chat-list.module';
@@ -32,6 +33,11 @@ import { StatusReportModule } from './status-report/status-report.module';
 // (what specifically led to the sale, not a 1-5 quality score) and uses its own tag family
 // (see order-success-analysis.constants.ts) so it never touches a chat's оценка-N score from when
 // it was still in "Вибір товару".
+//
+// ManagerTrendsModule (2026-09-14) reads evaluation_history (written by EvaluationService and
+// OrderSuccessAnalysisService via EvaluationHistoryModule) once a week and reports what a single
+// twice-daily report can't show: a manager's score rising/falling several weeks running, or one
+// specific mistake repeating across weeks.
 @Module({
   imports: [
     AppConfigModule,
@@ -46,6 +52,7 @@ import { StatusReportModule } from './status-report/status-report.module';
     EvaluationModule,
     StatusReportModule,
     OrderSuccessAnalysisModule,
+    ManagerTrendsModule,
     BulkTagStatusModule,
   ],
 })

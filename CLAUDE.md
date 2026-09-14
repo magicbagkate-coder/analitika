@@ -121,6 +121,43 @@ alwaysApply: true
   status-report) «Що системно веде до угод» —
   `ClaudeSuccessService.synthesizeSuccessPatterns` +
   `formatSuccessAttentionBlock`.
+- `evaluation-history/` — добавлен 2026-09-14. Не орган расписания, просто
+  Postgres-хранилище (`EvaluationHistoryEntity`/`evaluation_history`,
+  миграция `database/migrations/`): и `EvaluationService`
+  («Вибір товару»), и `OrderSuccessAnalysisService` («Замовлення
+  створено») пишут туда через `EvaluationHistoryService.tryRecord` после
+  каждой публикации оценки — `source: 'product_selection' |
+  'order_created'`, `note` = mistakes или successFactors соответственно.
+  Единственный читатель пока — `manager-trends/`.
+- `manager-trends/` — добавлен 2026-09-14 по явной просьбе владелицы:
+  «История и тренды по менеджерам». Раз в неделю (`WEEKLY_DIGEST_TIME` в
+  `manager-trends.constants.ts`, по умолчанию понедельник 10:00 по
+  Києву) читает `evaluation_history` за последние
+  `TREND_LOOKBACK_WEEKS` (сейчас 5) скользящих 7-дневных периодов,
+  **только `source: 'product_selection'`** (оценки «Замовлення створено»
+  — другая шкала, деструктивно исказили бы тренд качества, специально
+  исключены). Два независимых сигнала: (1) детерминированный тренд
+  оценки вверх/вниз `MIN_WEEKS_FOR_TREND` (3) недели подряд подряд, без
+  участия Claude — считается в коде; (2) одна и та же повторяющаяся
+  ошибка у менеджера несколько недель подряд —
+  `ClaudeTrendsService.synthesizeRecurringIssues`, отдельный Claude-вызов.
+  Если ни того, ни другого нет — сообщение не отправляется вообще.
+
+## Миграции базы данных
+
+`synchronize: false` в `DatabaseModule` намеренно (см. `.claude`-историю
+проекта) — схема только через миграции TypeORM, не автосинк. Новая
+миграция — файл в `src/database/migrations/`, руками (`up`/`down` SQL,
+без генератора, так как локальная машина не имеет сетевого доступа к
+Postgres на сервере — сервис `postgres` виден только изнутри
+docker-сети). Прогон миграций — **на сервере**, после `git pull` и
+`docker compose up -d --build`:
+```
+sudo docker compose -f /home/cloud/analitick/docker-compose.yml exec app npm run migration:run:prod
+```
+(`migration:run` — локальный/dev-вариант через ts-node, `migration:run:prod`
+— через собранный `dist/database/data-source.js`, именно он актуален на
+сервере).
 
 ## Как это всё запущено сейчас (важно!)
 

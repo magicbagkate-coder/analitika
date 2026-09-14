@@ -1,10 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ClaudeSuccessService } from '../claude/claude-success.service';
 import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
+import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
+import { getKyivHourMinute } from '../kyiv-time';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
-import { REPORT_TIMES, getKyivHourMinute } from '../status-report/status-report.constants';
+import { REPORT_TIMES } from '../status-report/status-report.constants';
 import { TelegramService } from '../telegram/telegram.service';
 import { formatSuccessAttentionBlock, formatSuccessBlock, formatSuccessSummary } from './order-success-analysis-formatter';
 import { ORDER_CREATED_STATUS, needsSuccessAnalysis, replaceSuccessTags } from './order-success-analysis.constants';
@@ -36,6 +38,7 @@ export class OrderSuccessAnalysisService implements OnModuleInit {
     private readonly sitniksChatUpdateService: SitniksChatUpdateService,
     private readonly claudeSuccessService: ClaudeSuccessService,
     private readonly telegramService: TelegramService,
+    private readonly evaluationHistoryService: EvaluationHistoryService,
   ) {}
 
   onModuleInit(): void {
@@ -110,15 +113,24 @@ export class OrderSuccessAnalysisService implements OnModuleInit {
 
     const recentMessages = filterToRecentWindow(messagesResponse.data, ANALYSIS_WINDOW_HOURS);
     const clientName = chat.userNickName ?? chat.userName;
+    const managerNames = this.collectManagerNames(recentMessages);
     const result = await this.claudeSuccessService.analyzeSuccessFactors(recentMessages, clientName);
     const score = result.hadUpsell ? SCORE_WITH_UPSELL : SCORE_WITHOUT_UPSELL;
 
     await this.publish(chat, score, latestMessageId);
+    await this.evaluationHistoryService.tryRecord({
+      chatId: chat.id,
+      clientName,
+      managerNames,
+      score,
+      source: 'order_created',
+      note: result.successFactors,
+    });
 
     return {
       chatId: chat.id,
       clientName,
-      managerNames: this.collectManagerNames(recentMessages),
+      managerNames,
       successFactors: result.successFactors,
       score,
     };

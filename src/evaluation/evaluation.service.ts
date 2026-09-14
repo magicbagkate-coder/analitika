@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeService } from '../claude/claude.service';
+import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { SitniksChatNotesService } from '../sitniks-chat-notes/sitniks-chat-notes.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
 import { SCORE_TAG_PREFIX, buildLastEvaluatedMessageTag, withoutTrackingTags } from './evaluation.constants';
 import type { ChatEvaluationResult, EvaluateChatParams } from './evaluation.types';
 
-/** Orchestrates one chat: Claude evaluation → tag + note written back to Sitniks. */
+/** Orchestrates one chat: Claude evaluation → tag + note written back to Sitniks, plus history for trends. */
 @Injectable()
 export class EvaluationService {
   private readonly logger = new Logger(EvaluationService.name);
@@ -14,6 +15,7 @@ export class EvaluationService {
     private readonly claudeService: ClaudeService,
     private readonly sitniksChatNotesService: SitniksChatNotesService,
     private readonly sitniksChatUpdateService: SitniksChatUpdateService,
+    private readonly evaluationHistoryService: EvaluationHistoryService,
   ) {}
 
   async evaluateAndPublish(params: EvaluateChatParams): Promise<ChatEvaluationResult> {
@@ -25,6 +27,14 @@ export class EvaluationService {
     await this.sitniksChatUpdateService.updateChat({ chatId: params.chatId, tags });
     // Only the recommendation goes to Sitniks — the rest is Telegram-only (see status-report.service.ts).
     await this.tryCreateNote(params.chatId, evaluation.recommendation);
+    await this.evaluationHistoryService.tryRecord({
+      chatId: params.chatId,
+      clientName: params.clientName,
+      managerNames: params.managerNames,
+      score: evaluation.score,
+      source: 'product_selection',
+      note: evaluation.mistakes,
+    });
 
     this.logger.log(`Evaluated chat ${params.chatId}: ${evaluation.score}/5`);
     return evaluation;
