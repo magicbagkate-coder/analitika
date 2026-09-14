@@ -6,6 +6,7 @@ import { AppConfigService } from '../config/app-config.service';
 
 const MIN_INTERVAL_MS = 2500;
 const MAX_RETRIES = 3;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 type TelegramErrorBody = { parameters?: { retry_after?: number } };
 
@@ -31,7 +32,7 @@ export class TelegramService {
     const body = { chat_id: this.appConfig.getTelegramChatId(), text, parse_mode: 'HTML' };
 
     try {
-      await firstValueFrom(this.httpService.post(url, body));
+      await firstValueFrom(this.httpService.post(url, body, { timeout: REQUEST_TIMEOUT_MS }));
       this.lastSentAt = Date.now();
       this.logger.log('Sent Telegram message');
     } catch (error) {
