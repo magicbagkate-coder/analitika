@@ -1,0 +1,25 @@
+export type ManagerRole = 'молодший менеджер' | 'старший менеджер' | 'керівник зміни' | 'касатель';
+
+/**
+ * Who's who across the three shifts, as given by the owner on 2026-09-10.
+ * Update this list whenever shift rosters change — Sitniks has no "role" field.
+ */
+const MANAGER_ROLE_BY_NAME = new Map<string, ManagerRole>([
+  ['Попович Наталія', 'керівник зміни'],
+  ['Офіленко Євгенія', 'молодший менеджер'],
+  ['Анастасія Корєшкова', 'касатель'],
+  ['Никольчева Аліна', 'старший менеджер'],
+  ['Ольга', 'керівник зміни'],
+  ['Ганна', 'старший менеджер'],
+  ['Эля', 'молодший менеджер'],
+  ['Ілона Бабанова', 'касатель'],
+  ['Карина Ковальчук', 'молодший менеджер'],
+  ['Бурнацева Ольга', 'керівник зміни'],
+  ['Бурова Єва', 'старший менеджер'],
+  ['Ольга Кошельнюк', 'касатель'],
+  ['Віолетта', 'молодший менеджер'],
+]);
+
+export function getManagerRole(managerName: string): ManagerRole | undefined {
+  return MANAGER_ROLE_BY_NAME.get(managerName);
+}

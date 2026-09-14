@@ -1,0 +1,49 @@
+import { Module } from '@nestjs/common';
+import { BulkTagStatusModule } from './bulk-tag-status/bulk-tag-status.module';
+import { AppConfigModule } from './config/app-config.module';
+import { DailyStatsStoreModule } from './daily-stats-store/daily-stats-store.module';
+import { EvaluationModule } from './evaluation/evaluation.module';
+import { OrderSuccessAnalysisModule } from './order-success-analysis/order-success-analysis.module';
+import { SitniksChatModule } from './sitniks-chat/sitniks-chat.module';
+import { SitniksChatListModule } from './sitniks-chat-list/sitniks-chat-list.module';
+import { SitniksChatMessagesModule } from './sitniks-chat-messages/sitniks-chat-messages.module';
+import { SitniksChatNotesModule } from './sitniks-chat-notes/sitniks-chat-notes.module';
+import { SitniksChatUpdateModule } from './sitniks-chat-update/sitniks-chat-update.module';
+import { SitniksManagersModule } from './sitniks-managers/sitniks-managers.module';
+import { StatusReportModule } from './status-report/status-report.module';
+
+// Docker/DB не используются — см. README.
+//
+// SitniksChatPollerModule and DailySummaryModule are deliberately NOT wired in (2026-09-10):
+// StatusReportModule now runs twice a day (16:00 + 23:59, see status-report.constants.ts) and
+// re-evaluates a chat whenever it has new messages since its last score (see needsEvaluation in
+// evaluation.constants.ts) — that alone covers TARGET_STATUS end to end. Running the poller too
+// would re-score the same chats every ~5 minutes all day (touches happen roughly hourly on
+// "Вибір товару"), burning Claude API budget for no benefit and leaving the two scheduled reports
+// looking empty since the poller would already have scored everything moments earlier.
+// DailySummaryModule would then send a redundant, mostly-empty 23:00 recap on top of that.
+// Re-enable SitniksChatPollerModule if/when a different, non-"Вибір товару" status needs its own
+// continuous catch-all scoring (it's already scoped to TARGET_STATUS, so scope it there first).
+//
+// OrderSuccessAnalysisModule (2026-09-14) runs on the same twice-daily clock for a second status,
+// "Замовлення створено" — deals that already closed. It asks Claude a different question there
+// (what specifically led to the sale, not a 1-5 quality score) and uses its own tag family
+// (see order-success-analysis.constants.ts) so it never touches a chat's оценка-N score from when
+// it was still in "Вибір товару".
+@Module({
+  imports: [
+    AppConfigModule,
+    DailyStatsStoreModule,
+    SitniksChatModule,
+    SitniksChatListModule,
+    SitniksChatMessagesModule,
+    SitniksChatNotesModule,
+    SitniksChatUpdateModule,
+    SitniksManagersModule,
+    EvaluationModule,
+    StatusReportModule,
+    OrderSuccessAnalysisModule,
+    BulkTagStatusModule,
+  ],
+})
+export class AppModule {}

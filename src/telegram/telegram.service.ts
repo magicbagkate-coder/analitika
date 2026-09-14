@@ -1,0 +1,64 @@
+import { HttpService } from '@nestjs/axios';
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+import { firstValueFrom } from 'rxjs';
+import { AppConfigService } from '../config/app-config.service';
+
+const MIN_INTERVAL_MS = 2500;
+const MAX_RETRIES = 3;
+
+type TelegramErrorBody = { parameters?: { retry_after?: number } };
+
+/** Sends plain-text (HTML parse_mode) messages to a Telegram chat, spaced out to respect group rate limits. */
+@Injectable()
+export class TelegramService {
+  private readonly logger = new Logger(TelegramService.name);
+  private lastSentAt = 0;
+
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly appConfig: AppConfigService,
+  ) {}
+
+  async sendMessage(text: string): Promise<void> {
+    await this.waitForSlot();
+    await this.sendWithRetry(text, 0);
+  }
+
+  private async sendWithRetry(text: string, attempt: number): Promise<void> {
+    const botToken = this.appConfig.getTelegramBotToken();
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const body = { chat_id: this.appConfig.getTelegramChatId(), text, parse_mode: 'HTML' };
+
+    try {
+      await firstValueFrom(this.httpService.post(url, body));
+      this.lastSentAt = Date.now();
+      this.logger.log('Sent Telegram message');
+    } catch (error) {
+      await this.retryOnRateLimit(error, text, attempt);
+    }
+  }
+
+  /** Telegram's 429 body carries how long to wait — honor it instead of guessing. */
+  private async retryOnRateLimit(error: unknown, text: string, attempt: number): Promise<void> {
+    const retryAfterSeconds = axios.isAxiosError<TelegramErrorBody>(error)
+      ? error.response?.data?.parameters?.retry_after
+      : undefined;
+    if (retryAfterSeconds === undefined || attempt >= MAX_RETRIES) throw error;
+
+    this.logger.warn(`Telegram rate limit hit, retrying in ${retryAfterSeconds}s (attempt ${attempt + 1})`);
+    await this.delay((retryAfterSeconds + 1) * 1000);
+    await this.sendWithRetry(text, attempt + 1);
+  }
+
+  private async waitForSlot(): Promise<void> {
+    const elapsedMs = Date.now() - this.lastSentAt;
+    if (elapsedMs >= MIN_INTERVAL_MS) return;
+
+    await this.delay(MIN_INTERVAL_MS - elapsedMs);
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}

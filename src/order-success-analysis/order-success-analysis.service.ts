@@ -1,0 +1,186 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ClaudeSuccessService } from '../claude/claude-success.service';
+import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
+import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
+import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
+import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
+import { REPORT_TIMES } from '../status-report/status-report.constants';
+import { TelegramService } from '../telegram/telegram.service';
+import { formatSuccessAttentionBlock, formatSuccessBlock, formatSuccessSummary } from './order-success-analysis-formatter';
+import { ORDER_CREATED_STATUS, needsSuccessAnalysis, replaceSuccessTags } from './order-success-analysis.constants';
+import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
+import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
+import type { OrderSuccessOutcome } from './order-success-analysis.types';
+
+const CHECK_INTERVAL_MS = 60 * 1000;
+const DELAY_BETWEEN_REQUESTS_MS = 1500;
+const PAGE_SIZE = 50;
+const SCORE_WITH_UPSELL = 5;
+const SCORE_WITHOUT_UPSELL = 4;
+
+/**
+ * Twice a day, on the same clock as StatusReportModule (REPORT_TIMES), looks at every chat in
+ * ORDER_CREATED_STATUS — the deal there is already won, so the useful question is different from
+ * StatusReportModule's quality score: not "was this handled well" but "what specifically made this
+ * sale happen, so it can be repeated". Runs as its own module/timer (not folded into
+ * StatusReportService) to keep each file under the project's line limit and each module to one concern.
+ */
+@Injectable()
+export class OrderSuccessAnalysisService implements OnModuleInit {
+  private readonly logger = new Logger(OrderSuccessAnalysisService.name);
+  private lastRunKey: string | null = null;
+
+  constructor(
+    private readonly sitniksChatListService: SitniksChatListService,
+    private readonly sitniksChatMessagesService: SitniksChatMessagesService,
+    private readonly sitniksChatUpdateService: SitniksChatUpdateService,
+    private readonly claudeSuccessService: ClaudeSuccessService,
+    private readonly telegramService: TelegramService,
+  ) {}
+
+  onModuleInit(): void {
+    setInterval(() => {
+      this.checkAndRun().catch((error) => this.logger.error(`Order-success analysis failed: ${(error as Error).message}`));
+    }, CHECK_INTERVAL_MS);
+  }
+
+  private async checkAndRun(): Promise<void> {
+    const now = new Date();
+    const isReportTime = REPORT_TIMES.some((time) => time.hour === now.getHours() && time.minute === now.getMinutes());
+    const runKey = `${now.toISOString().slice(0, 10)}T${now.getHours()}:${now.getMinutes()}`;
+    if (!isReportTime || this.lastRunKey === runKey) return;
+
+    this.lastRunKey = runKey;
+    await this.runAnalysis();
+  }
+
+  /** Public so a one-off script (e.g. a manual test trigger) can invoke the exact production run. */
+  async runAnalysis(): Promise<void> {
+    const chats = await this.fetchChatsInStatus();
+    const outcomes = await this.analyzeAll(chats);
+
+    this.logger.log(`Order-success analysis: ${outcomes.length}/${chats.length} chats analyzed`);
+    await this.sendToTelegram(chats.length, outcomes);
+  }
+
+  private async fetchChatsInStatus(): Promise<ChatListItem[]> {
+    const all: ChatListItem[] = [];
+    let skip = 0;
+
+    for (;;) {
+      const response = await this.sitniksChatListService.listChats({ status: ORDER_CREATED_STATUS, skip, limit: PAGE_SIZE });
+      all.push(...response.data);
+      if (response.data.length < PAGE_SIZE) break;
+      skip += PAGE_SIZE;
+      await this.delay(DELAY_BETWEEN_REQUESTS_MS);
+    }
+
+    return all;
+  }
+
+  private async analyzeAll(chats: ChatListItem[]): Promise<OrderSuccessOutcome[]> {
+    const outcomes: OrderSuccessOutcome[] = [];
+
+    for (const chat of chats) {
+      const outcome = await this.tryAnalyzeOneChat(chat);
+      if (outcome) outcomes.push(outcome);
+      await this.delay(DELAY_BETWEEN_REQUESTS_MS);
+    }
+
+    return outcomes;
+  }
+
+  /** One chat's failure (Sitniks/Claude error) shouldn't stop the rest of the batch. */
+  private async tryAnalyzeOneChat(chat: ChatListItem): Promise<OrderSuccessOutcome | null> {
+    try {
+      return await this.analyzeOneChat(chat);
+    } catch (error) {
+      this.logger.warn(`Could not analyze chat ${chat.id}: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  private async analyzeOneChat(chat: ChatListItem): Promise<OrderSuccessOutcome | null> {
+    const messagesResponse = await this.sitniksChatMessagesService.listMessages({ chatId: chat.id, limit: 50 });
+    if (messagesResponse.data.length === 0) return null;
+
+    const latestMessageId = messagesResponse.data[0]?.id;
+    if (!needsSuccessAnalysis(chat.tags, latestMessageId)) return null;
+
+    const recentMessages = filterToRecentWindow(messagesResponse.data, ANALYSIS_WINDOW_HOURS);
+    const clientName = chat.userNickName ?? chat.userName;
+    const result = await this.claudeSuccessService.analyzeSuccessFactors(recentMessages, clientName);
+    const score = result.hadUpsell ? SCORE_WITH_UPSELL : SCORE_WITHOUT_UPSELL;
+
+    await this.publish(chat, score, latestMessageId);
+
+    return {
+      chatId: chat.id,
+      clientName,
+      managerNames: this.collectManagerNames(recentMessages),
+      successFactors: result.successFactors,
+      score,
+    };
+  }
+
+  /** Owner's instruction (2026-09-14): tag only here, for tracking — notes stay Вибір-товару-only. */
+  private async publish(chat: ChatListItem, score: number, latestMessageId: string | undefined): Promise<void> {
+    const tags = replaceSuccessTags(chat.tags, score, latestMessageId);
+    await this.sitniksChatUpdateService.updateChat({ chatId: chat.id, tags });
+  }
+
+  /** Real manager names from message data, oldest to newest — same convention as StatusReportService. */
+  private collectManagerNames(messages: ChatMessage[]): string[] {
+    const chronological = [...messages].reverse();
+    const names = chronological.map((message) => message.managerName).filter((name): name is string => Boolean(name));
+    return Array.from(new Set(names));
+  }
+
+  /**
+   * Chat blocks, then ИТОГ, then — as its own separate message, same convention as
+   * StatusReportService's "На что обратить внимание" (owner's instruction, 2026-09-14) — a
+   * cross-deal "what systemically works" block, skipped if nothing repeats this run.
+   */
+  private async sendToTelegram(totalFound: number, outcomes: OrderSuccessOutcome[]): Promise<void> {
+    if (outcomes.length === 0) return;
+
+    await this.trySend(`🏆<b>Успішні угоди — статус "${ORDER_CREATED_STATUS}"</b> (${outcomes.length} з ${totalFound})`);
+    for (const outcome of outcomes) {
+      await this.trySend(formatSuccessBlock(outcome));
+    }
+    await this.trySend(formatSuccessSummary(outcomes));
+
+    const patterns = await this.trySynthesizeSuccessPatterns(outcomes);
+    const attentionBlock = formatSuccessAttentionBlock(this.formatReportTime(), outcomes.length, patterns);
+    if (attentionBlock.length > 0) await this.trySend(attentionBlock);
+  }
+
+  /** A synthesis-call hiccup shouldn't drop the rest of an otherwise-complete report. */
+  private async trySynthesizeSuccessPatterns(outcomes: OrderSuccessOutcome[]): Promise<string> {
+    try {
+      return await this.claudeSuccessService.synthesizeSuccessPatterns(outcomes);
+    } catch (error) {
+      this.logger.warn(`Could not synthesize success patterns: ${(error as Error).message}`);
+      return '';
+    }
+  }
+
+  /** "HH:MM" in local (Kyiv) time — matches StatusReportService.formatReportTime. */
+  private formatReportTime(): string {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+
+  /** Telegram hiccups shouldn't break the analysis/tagging that already succeeded. */
+  private async trySend(text: string): Promise<void> {
+    try {
+      await this.telegramService.sendMessage(text);
+    } catch (error) {
+      this.logger.warn(`Could not send success analysis to Telegram: ${(error as Error).message}`);
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}

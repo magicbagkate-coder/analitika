@@ -1,0 +1,264 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { ClaudeSynthesisService } from '../claude/claude-synthesis.service';
+import { EvaluationService } from '../evaluation/evaluation.service';
+import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
+import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
+import { TelegramService } from '../telegram/telegram.service';
+import { ANALYSIS_WINDOW_HOURS, TARGET_STATUS, filterToRecentWindow, needsEvaluation } from '../evaluation/evaluation.constants';
+import { formatAttentionBlock, formatChatBlock, formatSummaryBlock } from './status-report-formatter';
+import { QUIET_HOURS_BEFORE_EVALUATING, REPORT_TIMES } from './status-report.constants';
+import type { PatternSynthesisResult } from '../evaluation/evaluation.types';
+import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
+import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
+import type { ChatOutcome } from './status-report.types';
+
+const CHECK_INTERVAL_MS = 60 * 1000;
+const DELAY_BETWEEN_REQUESTS_MS = 1500;
+const PAGE_SIZE = 50;
+const LOST_THRESHOLD_MINUTES = 20;
+const REPORTS_DIR = join(process.cwd(), 'reports');
+
+/**
+ * Twice a day (see REPORT_TIMES), snapshots every chat currently in
+ * TARGET_STATUS: evaluates each one that's new or has new messages since its
+ * last score (see needsEvaluation), sends the full per-chat analysis to
+ * Telegram (one chat per message — file/website tags alone don't show WHY a
+ * score was given), plus a per-manager aggregate, and writes everything to a
+ * local file too. Checks the clock once a minute with plain setInterval, no
+ * scheduler package.
+ */
+@Injectable()
+export class StatusReportService implements OnModuleInit {
+  private readonly logger = new Logger(StatusReportService.name);
+  private lastRunKey: string | null = null;
+
+  constructor(
+    private readonly sitniksChatListService: SitniksChatListService,
+    private readonly sitniksChatMessagesService: SitniksChatMessagesService,
+    private readonly evaluationService: EvaluationService,
+    private readonly claudeSynthesisService: ClaudeSynthesisService,
+    private readonly telegramService: TelegramService,
+  ) {}
+
+  onModuleInit(): void {
+    setInterval(() => {
+      this.checkAndRun().catch((error) => this.logger.error(`Status report failed: ${(error as Error).message}`));
+    }, CHECK_INTERVAL_MS);
+  }
+
+  private async checkAndRun(): Promise<void> {
+    const now = new Date();
+    const isReportTime = REPORT_TIMES.some((time) => time.hour === now.getHours() && time.minute === now.getMinutes());
+    const runKey = `${now.toISOString().slice(0, 10)}T${now.getHours()}:${now.getMinutes()}`;
+    if (!isReportTime || this.lastRunKey === runKey) return;
+
+    this.lastRunKey = runKey;
+    await this.runReport();
+  }
+
+  /** Public so a one-off script (e.g. a manual test trigger) can invoke the exact production run. */
+  async runReport(): Promise<void> {
+    const chats = await this.fetchChatsInStatus();
+    const outcomes = await this.evaluateAll(chats);
+    const patterns = await this.trySynthesizePatterns(outcomes);
+
+    const filePath = await this.writeReportFile(chats.length, outcomes, patterns);
+    this.logger.log(`Status report written to ${filePath}`);
+    await this.sendReportToTelegram(chats.length, outcomes, patterns);
+  }
+
+  /** A synthesis-call hiccup shouldn't drop the rest of an otherwise-complete report. */
+  private async trySynthesizePatterns(outcomes: ChatOutcome[]): Promise<PatternSynthesisResult> {
+    try {
+      const draft = await this.claudeSynthesisService.synthesizePatterns(outcomes);
+      this.logger.log(
+        `Synthesis draft: ${draft.patterns.length} chars of patterns, ${draft.criticalCandidates.length} critical candidates`,
+      );
+      const critical = await this.verifyCriticalCandidates(draft.criticalCandidates, outcomes);
+      return { critical, patterns: draft.patterns };
+    } catch (error) {
+      this.logger.warn(`Could not synthesize patterns: ${(error as Error).message}`);
+      return { critical: '', patterns: '' };
+    }
+  }
+
+  /** Nothing is reported as "critical" without re-reading its full dialog first — see ClaudeSynthesisService. */
+  private async verifyCriticalCandidates(candidateNames: string[], outcomes: ChatOutcome[]): Promise<string> {
+    const confirmed: string[] = [];
+
+    for (const name of candidateNames) {
+      const outcome = outcomes.find((candidate) => candidate.clientName === name);
+      if (!outcome) continue;
+
+      const messagesResponse = await this.sitniksChatMessagesService.listMessages({ chatId: outcome.chatId, limit: 50 });
+      const description = await this.claudeSynthesisService.verifyCriticalChat(name, messagesResponse.data);
+      if (description.length > 0) confirmed.push(description);
+      await this.delay(DELAY_BETWEEN_REQUESTS_MS);
+    }
+
+    return confirmed.join(' ');
+  }
+
+  /**
+   * One message per newly evaluated chat (with the full analysis), then the ИТОГ summary, then —
+   * as its own separate message, per the owner's explicit instruction (2026-09-14) — "На что
+   * обратить внимание" (skipped entirely if there's nothing critical or repeating this run).
+   */
+  private async sendReportToTelegram(
+    totalFound: number,
+    outcomes: ChatOutcome[],
+    patterns: PatternSynthesisResult,
+  ): Promise<void> {
+    await this.trySendToTelegram(`Снимок статуса "${TARGET_STATUS}" — ${new Date().toISOString()}`);
+    for (const outcome of outcomes) {
+      await this.trySendToTelegram(formatChatBlock(outcome));
+    }
+    await this.trySendToTelegram(formatSummaryBlock(totalFound, outcomes));
+
+    const attentionBlock = formatAttentionBlock(this.formatReportTime(), totalFound, patterns);
+    if (attentionBlock.length > 0) await this.trySendToTelegram(attentionBlock);
+  }
+
+  /** "HH:MM" in local (Kyiv) time, e.g. "15:45" — matches the scheduled REPORT_TIMES entries. */
+  private formatReportTime(): string {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+
+  /** Telegram isn't configured yet on every deployment — don't let that break the file report. */
+  private async trySendToTelegram(text: string): Promise<void> {
+    try {
+      await this.telegramService.sendMessage(text);
+    } catch (error) {
+      this.logger.warn(`Could not send status report to Telegram: ${(error as Error).message}`);
+    }
+  }
+
+  private async fetchChatsInStatus(): Promise<ChatListItem[]> {
+    const all: ChatListItem[] = [];
+    let skip = 0;
+
+    for (;;) {
+      const response = await this.sitniksChatListService.listChats({ status: TARGET_STATUS, skip, limit: PAGE_SIZE });
+      all.push(...response.data);
+      if (response.data.length < PAGE_SIZE) break;
+      skip += PAGE_SIZE;
+      await this.delay(DELAY_BETWEEN_REQUESTS_MS);
+    }
+
+    return all;
+  }
+
+  private async evaluateAll(chats: ChatListItem[]): Promise<ChatOutcome[]> {
+    const outcomes: ChatOutcome[] = [];
+
+    for (const chat of chats) {
+      const outcome = await this.tryEvaluateOneChat(chat);
+      if (outcome) outcomes.push(outcome);
+      await this.delay(DELAY_BETWEEN_REQUESTS_MS);
+    }
+
+    return outcomes;
+  }
+
+  /** One chat's failure (Sitniks/Claude error) shouldn't stop the rest of the snapshot. */
+  private async tryEvaluateOneChat(chat: ChatListItem): Promise<ChatOutcome | null> {
+    try {
+      return await this.evaluateOneChat(chat);
+    } catch (error) {
+      this.logger.warn(`Could not evaluate chat ${chat.id}: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  private async evaluateOneChat(chat: ChatListItem): Promise<ChatOutcome | null> {
+    if (chat.assignedManagerId === undefined || chat.assignedManagerId === null) return null;
+    if (!this.isQuietLongEnough(chat)) return null;
+
+    const messagesResponse = await this.sitniksChatMessagesService.listMessages({ chatId: chat.id, limit: 50 });
+    if (messagesResponse.data.length === 0) return null;
+    if (!needsEvaluation(chat.tags, messagesResponse.data[0]?.id)) return null;
+
+    const recentMessages = filterToRecentWindow(messagesResponse.data, ANALYSIS_WINDOW_HOURS);
+    const clientName = chat.userNickName ?? chat.userName;
+    const evaluation = await this.evaluationService.evaluateAndPublish({
+      chatId: chat.id,
+      existingTags: chat.tags,
+      clientName,
+      messages: recentMessages,
+    });
+    return {
+      chatId: chat.id,
+      clientName,
+      managerNames: this.collectManagerNames(recentMessages),
+      score: evaluation.score,
+      purchased: evaluation.purchased,
+      goodPoints: evaluation.goodPoints,
+      closingSummary: evaluation.closingSummary,
+      mistakes: evaluation.mistakes,
+      recommendation: evaluation.recommendation,
+      isLost: this.isLost(messagesResponse.data),
+    };
+  }
+
+  /**
+   * Lost = last message is from the client (no managerName) AND it's been sitting unanswered
+   * for at least LOST_THRESHOLD_MINUTES — a client who wrote 5 minutes ago isn't "lost" yet.
+   * messages is newest-first (Sitniks API order) — [0] is the actual last message, not [length - 1].
+   */
+  private isLost(messages: ChatMessage[]): boolean {
+    const latestMessage = messages[0];
+    if (!latestMessage || latestMessage.managerName) return false;
+
+    const minutesSinceLastMessage = (Date.now() - new Date(latestMessage.createdAt).getTime()) / (60 * 1000);
+    return minutesSinceLastMessage >= LOST_THRESHOLD_MINUTES;
+  }
+
+  /**
+   * Real manager names from the (already ANALYSIS_WINDOW_HOURS-filtered) messages themselves,
+   * oldest to newest — assignedManagerId doesn't reliably resolve to a name.
+   */
+  private collectManagerNames(messages: ChatMessage[]): string[] {
+    const chronological = [...messages].reverse();
+    const names = chronological.map((message) => message.managerName).filter((name): name is string => Boolean(name));
+    return Array.from(new Set(names));
+  }
+
+  /** Skip chats still being actively worked — judge only ones that have gone quiet. */
+  private isQuietLongEnough(chat: ChatListItem): boolean {
+    const quietSinceMs = Date.now() - new Date(chat.lastMessageCreatedAt).getTime();
+    return quietSinceMs >= QUIET_HOURS_BEFORE_EVALUATING * 60 * 60 * 1000;
+  }
+
+  private async writeReportFile(
+    totalFound: number,
+    outcomes: ChatOutcome[],
+    patterns: PatternSynthesisResult,
+  ): Promise<string> {
+    await mkdir(REPORTS_DIR, { recursive: true });
+
+    const now = new Date();
+    const stamp = `${now.toISOString().slice(0, 10)}T${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const filePath = join(REPORTS_DIR, `status-report-${stamp}.txt`);
+    const blocks = outcomes.map((outcome) => formatChatBlock(outcome));
+    const attentionBlock = formatAttentionBlock(this.formatReportTime(), totalFound, patterns);
+    const content = [
+      `Снимок статуса "${TARGET_STATUS}" — ${now.toISOString()}`,
+      '',
+      ...blocks,
+      formatSummaryBlock(totalFound, outcomes),
+      attentionBlock,
+    ]
+      .filter((section) => section.length > 0)
+      .join('\n\n');
+    await writeFile(filePath, content, 'utf-8');
+
+    return filePath;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}
