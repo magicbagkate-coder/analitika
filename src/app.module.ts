@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BulkTagStatusModule } from './bulk-tag-status/bulk-tag-status.module';
 import { AppConfigModule } from './config/app-config.module';
+import { ConflictWatcherModule } from './conflict-watcher/conflict-watcher.module';
 import { DailyStatsStoreModule } from './daily-stats-store/daily-stats-store.module';
 import { DatabaseModule } from './database/database.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
@@ -43,6 +44,13 @@ import { StatusReportModule } from './status-report/status-report.module';
 // OrderSuccessAnalysisService via EvaluationHistoryModule) once a week and reports what a single
 // twice-daily report can't show: a manager's score rising/falling several weeks running, or one
 // specific mistake repeating across weeks.
+//
+// ConflictWatcherModule (2026-09-15) is NOT the same as the disabled SitniksChatPollerModule above —
+// it doesn't re-score chats. Every ~10 minutes it does one free keyword pre-filter on each currently
+// open TARGET_STATUS chat's newest client message (no Claude call unless a keyword actually hits),
+// and only escalates to Telegram if a full-transcript Claude check then confirms a real conflict.
+// Owner's explicit rule (2026-09-15): an explicit client conflict/complaint must be reported
+// immediately, not wait for the 15:45/23:45 report or its 1.5h quiet gate.
 @Module({
   imports: [
     AppConfigModule,
@@ -60,6 +68,7 @@ import { StatusReportModule } from './status-report/status-report.module';
     ReportSchedulerModule,
     ManagerTrendsModule,
     BulkTagStatusModule,
+    ConflictWatcherModule,
   ],
 })
 export class AppModule {}
