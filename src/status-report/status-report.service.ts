@@ -8,6 +8,7 @@ import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-cha
 import { TelegramService } from '../telegram/telegram.service';
 import { ANALYSIS_WINDOW_HOURS, TARGET_STATUS, filterToRecentWindow, needsEvaluation } from '../evaluation/evaluation.constants';
 import { getKyivHourMinute } from '../kyiv-time';
+import { runWithWatchdog } from '../report-watchdog';
 import { formatAttentionBlock, formatChatBlock, formatSummaryBlock } from './status-report-formatter';
 import { QUIET_HOURS_BEFORE_EVALUATING, REPORT_TIMES } from './status-report.constants';
 import type { PatternSynthesisResult } from '../evaluation/evaluation.types';
@@ -57,7 +58,7 @@ export class StatusReportService implements OnModuleInit {
     if (!isReportTime || this.lastRunKey === runKey) return;
 
     this.lastRunKey = runKey;
-    await this.runReport();
+    await runWithWatchdog(this.runReport(), 'Отчёт "Вибір товару"', this.telegramService, this.logger);
   }
 
   /** Public so a one-off script (e.g. a manual test trigger) can invoke the exact production run. */
@@ -91,16 +92,26 @@ export class StatusReportService implements OnModuleInit {
     const confirmed: string[] = [];
 
     for (const name of candidateNames) {
-      const outcome = outcomes.find((candidate) => candidate.clientName === name);
-      if (!outcome) continue;
-
-      const messagesResponse = await this.sitniksChatMessagesService.listMessages({ chatId: outcome.chatId, limit: 50 });
-      const description = await this.claudeSynthesisService.verifyCriticalChat(name, messagesResponse.data);
+      const description = await this.tryVerifyOneCandidate(name, outcomes);
       if (description.length > 0) confirmed.push(description);
       await this.delay(DELAY_BETWEEN_REQUESTS_MS);
     }
 
     return confirmed.join(' ');
+  }
+
+  /** One candidate's Sitniks/Claude hiccup shouldn't drop verification for the rest. */
+  private async tryVerifyOneCandidate(name: string, outcomes: ChatOutcome[]): Promise<string> {
+    const outcome = outcomes.find((candidate) => candidate.clientName === name);
+    if (!outcome) return '';
+
+    try {
+      const messagesResponse = await this.sitniksChatMessagesService.listMessages({ chatId: outcome.chatId, limit: 50 });
+      return await this.claudeSynthesisService.verifyCriticalChat(name, messagesResponse.data);
+    } catch (error) {
+      this.logger.warn(`Could not verify critical candidate ${name}: ${(error as Error).message}`);
+      return '';
+    }
   }
 
   /**

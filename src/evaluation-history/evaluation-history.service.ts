@@ -14,10 +14,15 @@ export class EvaluationHistoryService {
     private readonly repository: Repository<EvaluationHistoryEntity>,
   ) {}
 
-  /** A DB hiccup shouldn't break the evaluation/publish flow that already succeeded. */
+  /**
+   * A DB hiccup shouldn't break the evaluation/publish flow that already succeeded. `note` is
+   * coerced to '' if Claude's tool response ever comes back with an actual null there (observed
+   * 2026-09-14 — the schema says string, but a forced tool call isn't a hard type guarantee) —
+   * losing one chat's history row to a NOT NULL violation isn't worth surfacing as a real failure.
+   */
   async tryRecord(params: RecordEvaluationParams): Promise<void> {
     try {
-      await this.repository.insert(params);
+      await this.repository.insert({ ...params, note: params.note ?? '' });
     } catch (error) {
       this.logger.warn(`Could not record evaluation history for chat ${params.chatId}: ${(error as Error).message}`);
     }

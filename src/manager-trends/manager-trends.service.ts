@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ClaudeTrendsService } from '../claude/claude-trends.service';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute, getKyivWeekday } from '../kyiv-time';
+import { runWithWatchdog } from '../report-watchdog';
 import { TelegramService } from '../telegram/telegram.service';
 import { formatWeeklyDigest } from './manager-trends-formatter';
 import { MIN_WEEKS_FOR_TREND, TREND_LOOKBACK_WEEKS, WEEKLY_DIGEST_TIME, weekIndexOf } from './manager-trends.constants';
@@ -44,7 +45,7 @@ export class ManagerTrendsService implements OnModuleInit {
     if (!isDigestTime || this.lastRunKey === runKey) return;
 
     this.lastRunKey = runKey;
-    await this.runDigest();
+    await runWithWatchdog(this.runDigest(), 'Еженедельная сводка по менеджерам', this.telegramService, this.logger);
   }
 
   /** Public so a one-off script can invoke the exact production run without waiting for Monday. */

@@ -3,6 +3,7 @@ import { ClaudeSuccessService } from '../claude/claude-success.service';
 import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute } from '../kyiv-time';
+import { runWithWatchdog } from '../report-watchdog';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
@@ -55,7 +56,7 @@ export class OrderSuccessAnalysisService implements OnModuleInit {
     if (!isReportTime || this.lastRunKey === runKey) return;
 
     this.lastRunKey = runKey;
-    await this.runAnalysis();
+    await runWithWatchdog(this.runAnalysis(), 'Анализ "Замовлення створено"', this.telegramService, this.logger);
   }
 
   /** Public so a one-off script (e.g. a manual test trigger) can invoke the exact production run. */

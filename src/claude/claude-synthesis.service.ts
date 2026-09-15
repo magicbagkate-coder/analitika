@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
+import { createAnthropicClient } from './anthropic-client';
 import { describeManagersInline } from './manager-context';
 import { formatTranscript } from './transcript-formatter';
 import type { PatternSynthesisInput } from '../evaluation/evaluation.types';
@@ -24,7 +25,7 @@ export class ClaudeSynthesisService {
   private readonly client: Anthropic;
 
   constructor(private readonly appConfig: AppConfigService) {
-    this.client = new Anthropic({ apiKey: this.appConfig.getAnthropicApiKey() });
+    this.client = createAnthropicClient(this.appConfig.getAnthropicApiKey());
   }
 
   async synthesizePatterns(outcomes: PatternSynthesisInput[]): Promise<PatternSynthesisDraft> {

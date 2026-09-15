@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
+import { createAnthropicClient } from './anthropic-client';
 
 const RECURRING_ISSUES_TOOL_NAME = 'submit_recurring_issues';
 
@@ -21,7 +22,7 @@ export class ClaudeTrendsService {
   private readonly client: Anthropic;
 
   constructor(private readonly appConfig: AppConfigService) {
-    this.client = new Anthropic({ apiKey: this.appConfig.getAnthropicApiKey() });
+    this.client = createAnthropicClient(this.appConfig.getAnthropicApiKey());
   }
 
   async synthesizeRecurringIssues(managers: ManagerWeeklyNotes[]): Promise<string> {

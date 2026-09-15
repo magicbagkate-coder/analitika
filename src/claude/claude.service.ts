@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
+import { createAnthropicClient } from './anthropic-client';
 import { collectManagerNames, describeManagerRoles } from './manager-context';
 import { formatTranscript, toKyivTime } from './transcript-formatter';
 import type { ChatEvaluationResult } from '../evaluation/evaluation.types';
@@ -14,7 +15,7 @@ export class ClaudeService {
   private readonly client: Anthropic;
 
   constructor(private readonly appConfig: AppConfigService) {
-    this.client = new Anthropic({ apiKey: this.appConfig.getAnthropicApiKey() });
+    this.client = createAnthropicClient(this.appConfig.getAnthropicApiKey());
   }
 
   async evaluateChat(messages: ChatMessage[], clientName: string): Promise<ChatEvaluationResult> {

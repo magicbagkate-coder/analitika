@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
+import { createAnthropicClient } from './anthropic-client';
 import { collectManagerNames, describeManagerRoles, describeManagersInline } from './manager-context';
 import { formatTranscript, toKyivTime } from './transcript-formatter';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
@@ -24,7 +25,7 @@ export class ClaudeSuccessService {
   private readonly client: Anthropic;
 
   constructor(private readonly appConfig: AppConfigService) {
-    this.client = new Anthropic({ apiKey: this.appConfig.getAnthropicApiKey() });
+    this.client = createAnthropicClient(this.appConfig.getAnthropicApiKey());
   }
 
   async analyzeSuccessFactors(messages: ChatMessage[], clientName: string): Promise<SuccessFactorsResult> {
