@@ -1,13 +1,11 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeSuccessService } from '../claude/claude-success.service';
 import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute } from '../kyiv-time';
-import { runWithWatchdog } from '../report-watchdog';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
-import { REPORT_TIMES } from '../status-report/status-report.constants';
 import { TelegramService } from '../telegram/telegram.service';
 import { formatSuccessAttentionBlock, formatSuccessBlock, formatSuccessSummary } from './order-success-analysis-formatter';
 import { ORDER_CREATED_STATUS, needsSuccessAnalysis, replaceSuccessTags } from './order-success-analysis.constants';
@@ -15,23 +13,21 @@ import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types'
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 import type { OrderSuccessOutcome } from './order-success-analysis.types';
 
-const CHECK_INTERVAL_MS = 60 * 1000;
 const DELAY_BETWEEN_REQUESTS_MS = 1500;
 const PAGE_SIZE = 50;
 const SCORE_WITH_UPSELL = 5;
 const SCORE_WITHOUT_UPSELL = 4;
 
 /**
- * Twice a day, on the same clock as StatusReportModule (REPORT_TIMES), looks at every chat in
- * ORDER_CREATED_STATUS — the deal there is already won, so the useful question is different from
- * StatusReportModule's quality score: not "was this handled well" but "what specifically made this
- * sale happen, so it can be repeated". Runs as its own module/timer (not folded into
- * StatusReportService) to keep each file under the project's line limit and each module to one concern.
+ * Looks at every chat in ORDER_CREATED_STATUS — the deal there is already won, so the useful
+ * question is different from StatusReportService's quality score: not "was this handled well" but
+ * "what specifically made this sale happen, so it can be repeated". Scheduling (twice a day,
+ * strictly before StatusReportService — owner's instruction, 2026-09-15, so the two reports never
+ * interleave) lives in ReportSchedulerService, not here — this service only runs on demand.
  */
 @Injectable()
-export class OrderSuccessAnalysisService implements OnModuleInit {
+export class OrderSuccessAnalysisService {
   private readonly logger = new Logger(OrderSuccessAnalysisService.name);
-  private lastRunKey: string | null = null;
 
   constructor(
     private readonly sitniksChatListService: SitniksChatListService,
@@ -42,24 +38,6 @@ export class OrderSuccessAnalysisService implements OnModuleInit {
     private readonly evaluationHistoryService: EvaluationHistoryService,
   ) {}
 
-  onModuleInit(): void {
-    setInterval(() => {
-      this.checkAndRun().catch((error) => this.logger.error(`Order-success analysis failed: ${(error as Error).message}`));
-    }, CHECK_INTERVAL_MS);
-  }
-
-  /** Checked against Kyiv time explicitly — the host (dev machine or server) may run in any timezone. */
-  private async checkAndRun(): Promise<void> {
-    const { hour, minute } = getKyivHourMinute();
-    const isReportTime = REPORT_TIMES.some((time) => time.hour === hour && time.minute === minute);
-    const runKey = `${new Date().toISOString().slice(0, 10)}T${hour}:${minute}`;
-    if (!isReportTime || this.lastRunKey === runKey) return;
-
-    this.lastRunKey = runKey;
-    await runWithWatchdog(this.runAnalysis(), 'Анализ "Замовлення створено"', this.telegramService, this.logger);
-  }
-
-  /** Public so a one-off script (e.g. a manual test trigger) can invoke the exact production run. */
   async runAnalysis(): Promise<void> {
     const chats = await this.fetchChatsInStatus();
     const outcomes = await this.analyzeAll(chats);

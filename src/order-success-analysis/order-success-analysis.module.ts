@@ -17,5 +17,6 @@ import { OrderSuccessAnalysisService } from './order-success-analysis.service';
     EvaluationHistoryModule,
   ],
   providers: [OrderSuccessAnalysisService],
+  exports: [OrderSuccessAnalysisService],
 })
 export class OrderSuccessAnalysisModule {}

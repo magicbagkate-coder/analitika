@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ClaudeSynthesisService } from '../claude/claude-synthesis.service';
@@ -8,33 +8,29 @@ import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-cha
 import { TelegramService } from '../telegram/telegram.service';
 import { ANALYSIS_WINDOW_HOURS, TARGET_STATUS, filterToRecentWindow, needsEvaluation } from '../evaluation/evaluation.constants';
 import { getKyivHourMinute } from '../kyiv-time';
-import { runWithWatchdog } from '../report-watchdog';
 import { formatAttentionBlock, formatChatBlock, formatSummaryBlock } from './status-report-formatter';
-import { QUIET_HOURS_BEFORE_EVALUATING, REPORT_TIMES } from './status-report.constants';
+import { QUIET_HOURS_BEFORE_EVALUATING } from './status-report.constants';
 import type { PatternSynthesisResult } from '../evaluation/evaluation.types';
 import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 import type { ChatOutcome } from './status-report.types';
 
-const CHECK_INTERVAL_MS = 60 * 1000;
 const DELAY_BETWEEN_REQUESTS_MS = 1500;
 const PAGE_SIZE = 50;
 const LOST_THRESHOLD_MINUTES = 20;
 const REPORTS_DIR = join(process.cwd(), 'reports');
 
 /**
- * Twice a day (see REPORT_TIMES), snapshots every chat currently in
- * TARGET_STATUS: evaluates each one that's new or has new messages since its
- * last score (see needsEvaluation), sends the full per-chat analysis to
- * Telegram (one chat per message — file/website tags alone don't show WHY a
- * score was given), plus a per-manager aggregate, and writes everything to a
- * local file too. Checks the clock once a minute with plain setInterval, no
- * scheduler package.
+ * Snapshots every chat currently in TARGET_STATUS: evaluates each one that's new or has new
+ * messages since its last score (see needsEvaluation), sends the full per-chat analysis to
+ * Telegram (one chat per message — file/website tags alone don't show WHY a score was given), plus
+ * a per-manager aggregate, and writes everything to a local file too. Scheduling (twice a day,
+ * strictly after OrderSuccessAnalysisService — owner's instruction, 2026-09-15, so the two reports
+ * never interleave) lives in ReportSchedulerService, not here — this service only runs on demand.
  */
 @Injectable()
-export class StatusReportService implements OnModuleInit {
+export class StatusReportService {
   private readonly logger = new Logger(StatusReportService.name);
-  private lastRunKey: string | null = null;
 
   constructor(
     private readonly sitniksChatListService: SitniksChatListService,
@@ -44,24 +40,6 @@ export class StatusReportService implements OnModuleInit {
     private readonly telegramService: TelegramService,
   ) {}
 
-  onModuleInit(): void {
-    setInterval(() => {
-      this.checkAndRun().catch((error) => this.logger.error(`Status report failed: ${(error as Error).message}`));
-    }, CHECK_INTERVAL_MS);
-  }
-
-  /** Checked against Kyiv time explicitly — the host (dev machine or server) may run in any timezone. */
-  private async checkAndRun(): Promise<void> {
-    const { hour, minute } = getKyivHourMinute();
-    const isReportTime = REPORT_TIMES.some((time) => time.hour === hour && time.minute === minute);
-    const runKey = `${new Date().toISOString().slice(0, 10)}T${hour}:${minute}`;
-    if (!isReportTime || this.lastRunKey === runKey) return;
-
-    this.lastRunKey = runKey;
-    await runWithWatchdog(this.runReport(), 'Отчёт "Вибір товару"', this.telegramService, this.logger);
-  }
-
-  /** Public so a one-off script (e.g. a manual test trigger) can invoke the exact production run. */
   async runReport(): Promise<void> {
     const chats = await this.fetchChatsInStatus();
     const outcomes = await this.evaluateAll(chats);

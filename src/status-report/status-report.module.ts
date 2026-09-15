@@ -9,5 +9,6 @@ import { StatusReportService } from './status-report.service';
 @Module({
   imports: [SitniksChatListModule, SitniksChatMessagesModule, EvaluationModule, ClaudeModule, TelegramModule],
   providers: [StatusReportService],
+  exports: [StatusReportService],
 })
 export class StatusReportModule {}

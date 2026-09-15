@@ -6,6 +6,7 @@ import { DatabaseModule } from './database/database.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { ManagerTrendsModule } from './manager-trends/manager-trends.module';
 import { OrderSuccessAnalysisModule } from './order-success-analysis/order-success-analysis.module';
+import { ReportSchedulerModule } from './report-scheduler/report-scheduler.module';
 import { SitniksChatModule } from './sitniks-chat/sitniks-chat.module';
 import { SitniksChatListModule } from './sitniks-chat-list/sitniks-chat-list.module';
 import { SitniksChatMessagesModule } from './sitniks-chat-messages/sitniks-chat-messages.module';
@@ -28,11 +29,15 @@ import { StatusReportModule } from './status-report/status-report.module';
 // Re-enable SitniksChatPollerModule if/when a different, non-"Вибір товару" status needs its own
 // continuous catch-all scoring (it's already scoped to TARGET_STATUS, so scope it there first).
 //
-// OrderSuccessAnalysisModule (2026-09-14) runs on the same twice-daily clock for a second status,
-// "Замовлення створено" — deals that already closed. It asks Claude a different question there
-// (what specifically led to the sale, not a 1-5 quality score) and uses its own tag family
-// (see order-success-analysis.constants.ts) so it never touches a chat's оценка-N score from when
-// it was still in "Вибір товару".
+// OrderSuccessAnalysisModule (2026-09-14) covers a second status, "Замовлення створено" — deals
+// that already closed. It asks Claude a different question there (what specifically led to the
+// sale, not a 1-5 quality score) and uses its own tag family (see order-success-analysis.constants.ts)
+// so it never touches a chat's оценка-N score from when it was still in "Вибір товару".
+//
+// ReportSchedulerModule (2026-09-15) owns the twice-daily clock for both StatusReportModule and
+// OrderSuccessAnalysisModule and runs them strictly in sequence (order-success first, then
+// status-report) — owner's explicit instruction, so the two reports never interleave in Telegram.
+// Neither module schedules itself anymore; both only expose an on-demand run method.
 //
 // ManagerTrendsModule (2026-09-14) reads evaluation_history (written by EvaluationService and
 // OrderSuccessAnalysisService via EvaluationHistoryModule) once a week and reports what a single
@@ -52,6 +57,7 @@ import { StatusReportModule } from './status-report/status-report.module';
     EvaluationModule,
     StatusReportModule,
     OrderSuccessAnalysisModule,
+    ReportSchedulerModule,
     ManagerTrendsModule,
     BulkTagStatusModule,
   ],
