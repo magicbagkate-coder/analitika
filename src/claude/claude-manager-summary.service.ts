@@ -32,7 +32,8 @@ export class ClaudeManagerSummaryService {
 
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      max_tokens: 2000,
+      // Same headroom fix as ClaudeSynthesisService — see its comment (2026-09-15 incident).
+      max_tokens: 4000,
       tools: [this.buildTool()],
       tool_choice: { type: 'tool', name: CHARACTERISTICS_TOOL_NAME },
       messages: [{ role: 'user', content: this.buildPrompt(managers) }],
@@ -55,7 +56,8 @@ export class ClaudeManagerSummaryService {
       'в процессе; "Замовлення створено" — сделка УЖЕ закрыта, там оценка чисто техническая (была',
       'подтверждённая допродажа — 5, не было — 4), это не про качество процесса.',
       'Роли разные по обязанностям — учитывай их и НИКОГДА не пиши в замечаниях касателю, что он не',
-      'отработал возражение или не сделал допродажу, это не его работа по регламенту.',
+      'отработал возражение или не сделал допродажу, это не его работа по регламенту. То же для "сервіс',
+      'менеджера" — он занимается уже оформленным заказом (обмен, брак, логистика), не консультацией.',
       '',
       `Данные по ${managers.length} менеджерам:`,
       sections.join('\n\n'),

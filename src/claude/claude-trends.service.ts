@@ -30,7 +30,8 @@ export class ClaudeTrendsService {
 
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      max_tokens: 2000,
+      // Same headroom fix as ClaudeSynthesisService — see its comment (2026-09-15 incident).
+      max_tokens: 4000,
       tools: [this.buildTool()],
       tool_choice: { type: 'tool', name: RECURRING_ISSUES_TOOL_NAME },
       messages: [{ role: 'user', content: this.buildPrompt(managers) }],

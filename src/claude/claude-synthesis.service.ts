@@ -33,7 +33,10 @@ export class ClaudeSynthesisService {
 
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      max_tokens: 2000,
+      // 2000 wasn't enough for a large batch (48 chats, 2026-09-15 recovery) — thinking + a full
+      // multi-sentence patterns write-up burned the whole budget before finishing, returning an
+      // empty tool input with stop_reason "max_tokens". 4000 leaves real headroom either way.
+      max_tokens: 4000,
       tools: [this.buildSynthesisTool()],
       tool_choice: { type: 'tool', name: SYNTHESIS_TOOL_NAME },
       messages: [{ role: 'user', content: this.buildSynthesisPrompt(outcomes) }],
@@ -75,6 +78,8 @@ export class ClaudeSynthesisService {
       'или предлагать допродажу — это зона "старшого менеджера" и "керівника зміни". НИКОГДА не включай в',
       'паттерны и не бери в критичные кандидаты ситуацию, где претензия к касателю — это "не отработал',
       'возражение" или "не сделал допродажу" — такой паттерн не считается реальной проблемой.',
+      '"Сервіс менеджер" занимается уже оформленным заказом (обмен, брак, логистика) — по тем же причинам',
+      'не считай реальной проблемой, если он не консультировал по выбору товара или не делал допродажу.',
       '',
       `Данные по ${outcomes.length} чатам (клиентка (менеджеры с ролями) — оценка: ошибки):`,
       rows,

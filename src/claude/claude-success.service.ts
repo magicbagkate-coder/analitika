@@ -52,16 +52,18 @@ export class ClaudeSuccessService {
 
   /**
    * Cross-chat "what systemically works" pattern, analogous to ClaudeSynthesisService.synthesizePatterns.
-   * max_tokens: 2000, not less — claude-sonnet-5's extended thinking eats into the budget before any
-   * output text, and a synthesis-style call once came back silently empty at max_tokens: 500 (see
-   * project memory). 2000 was the level that reliably left room for real output afterward.
+   * claude-sonnet-5's extended thinking eats into the budget before any output text — a synthesis-style
+   * call once came back silently empty at max_tokens: 500, and again at 2000 with a large batch (48
+   * chats, 2026-09-15) — stop_reason "max_tokens" with an empty tool input either time. 4000 is the
+   * level that's reliably left room for real output so far, but this scales with batch size, so watch
+   * for the same silent-empty failure again on an unusually large run.
    */
   async synthesizeSuccessPatterns(outcomes: SuccessPatternInput[]): Promise<string> {
     if (outcomes.length === 0) return '';
 
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      max_tokens: 2000,
+      max_tokens: 4000,
       tools: [this.buildSuccessPatternsTool()],
       tool_choice: { type: 'tool', name: SUCCESS_PATTERNS_TOOL_NAME },
       messages: [{ role: 'user', content: this.buildSuccessPatternsPrompt(outcomes) }],
@@ -130,6 +132,9 @@ export class ClaudeSuccessService {
       'ответ; касатель — только за своевременное шаблонное повторное касание, у него нет допродаж и',
       'работы с возражениями, НИКОГДА не приписывай ему заслугу за это, даже если рядом это сделал',
       'другой менеджер; старший менеджер и керівник зміни — за консультацию, допродажи и закрытие.',
+      '"Сервіс менеджер" — занимается уже ОФОРМЛЕННЫМ заказом: обмен, брак, логистика/ТТН, данные',
+      'доставки. Это НЕ про консультацию или допродажу — не жди и не приписывай ему это; но если он',
+      'оперативно и чётко решил вопрос с браком/заменой/доставкой, это стоит назвать конкретной заслугой.',
       'Будь конкретен и опирайся только на факты из переписки: что именно было сказано/сделано',
       '(например: сразу прислали фото всех цветов, предложили бронь, дожали через рассрочку,',
       'вовремя вернулись после "подумаю", сделали допродажу аксессуара) — а не общие фразы вроде',

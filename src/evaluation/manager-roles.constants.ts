@@ -1,4 +1,4 @@
-export type ManagerRole = 'молодший менеджер' | 'старший менеджер' | 'керівник зміни' | 'касатель';
+export type ManagerRole = 'молодший менеджер' | 'старший менеджер' | 'керівник зміни' | 'касатель' | 'сервіс менеджер';
 
 /**
  * Who's who across the three shifts, as given by the owner on 2026-09-10.
@@ -18,6 +18,9 @@ const MANAGER_ROLE_BY_NAME = new Map<string, ManagerRole>([
   ['Бурова Єва', 'молодший менеджер'],
   ['Ольга Кошельнюк', 'касатель'],
   ['Віолетта', 'старший менеджер'],
+  ['Віолетта Бабак', 'старший менеджер'],
+  ['Аліна', 'сервіс менеджер'],
+  ['Аліна Хоніч', 'сервіс менеджер'],
 ]);
 
 export function getManagerRole(managerName: string): ManagerRole | undefined {
