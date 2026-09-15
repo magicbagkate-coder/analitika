@@ -111,6 +111,18 @@ export class ClaudeManagerSummaryService {
     if (!toolUse || toolUse.type !== 'tool_use') return [];
 
     const input = toolUse.input as { characteristics: ManagerCharacteristic[] };
-    return input.characteristics;
+    return input.characteristics.filter((characteristic) => this.isValid(characteristic));
+  }
+
+  /**
+   * A forced tool call isn't a hard type guarantee (same caveat as EvaluationHistoryService's note
+   * coercion) — a malformed entry here crashed the whole process once already (2026-09-15, missing
+   * managerName reached escapeHtml downstream unguarded). Validate at this boundary instead.
+   */
+  private isValid(characteristic: ManagerCharacteristic): boolean {
+    if (typeof characteristic.managerName !== 'string' || characteristic.managerName.length === 0) return false;
+    if (typeof characteristic.score !== 'number') return false;
+    if (!Array.isArray(characteristic.recurringIssues)) return false;
+    return characteristic.recurringIssues.every((issue) => typeof issue === 'string');
   }
 }
