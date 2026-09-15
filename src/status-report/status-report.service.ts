@@ -50,27 +50,41 @@ export class StatusReportService {
     await this.sendReportToTelegram(chats.length, outcomes, patterns);
   }
 
-  /** A synthesis-call hiccup shouldn't drop the rest of an otherwise-complete report. */
+  /**
+   * A synthesis-call hiccup shouldn't drop the rest of an otherwise-complete report. Chats where
+   * Claude flagged clientConflict (evaluation.ts) are unioned into the candidate list here in code —
+   * owner's rule (2026-09-15): any client complaint/irritation about the communication is 100%
+   * reported, not left to the synthesis LLM's discretion on whether it's worth including.
+   */
   private async trySynthesizePatterns(outcomes: ChatOutcome[]): Promise<PatternSynthesisResult> {
+    const conflictNames = outcomes.filter((outcome) => outcome.clientConflict).map((outcome) => outcome.clientName);
     try {
       const draft = await this.claudeSynthesisService.synthesizePatterns(outcomes);
+      const candidateNames = Array.from(new Set([...draft.criticalCandidates, ...conflictNames]));
       this.logger.log(
-        `Synthesis draft: ${draft.patterns.length} chars of patterns, ${draft.criticalCandidates.length} critical candidates`,
+        `Synthesis draft: ${draft.patterns.length} chars of patterns, ${candidateNames.length} critical candidates` +
+          ` (${conflictNames.length} guaranteed by client-conflict rule)`,
       );
-      const critical = await this.verifyCriticalCandidates(draft.criticalCandidates, outcomes);
+      const critical = await this.verifyCriticalCandidates(candidateNames, outcomes, new Set(conflictNames));
       return { critical, patterns: draft.patterns };
     } catch (error) {
       this.logger.warn(`Could not synthesize patterns: ${(error as Error).message}`);
-      return { critical: '', patterns: '' };
+      // Even a synthesis-call failure must not silently drop a confirmed client conflict.
+      const critical = await this.verifyCriticalCandidates(conflictNames, outcomes, new Set(conflictNames));
+      return { critical, patterns: '' };
     }
   }
 
   /** Nothing is reported as "critical" without re-reading its full dialog first — see ClaudeSynthesisService. */
-  private async verifyCriticalCandidates(candidateNames: string[], outcomes: ChatOutcome[]): Promise<string> {
+  private async verifyCriticalCandidates(
+    candidateNames: string[],
+    outcomes: ChatOutcome[],
+    guaranteedNames: Set<string>,
+  ): Promise<string> {
     const confirmed: string[] = [];
 
     for (const name of candidateNames) {
-      const description = await this.tryVerifyOneCandidate(name, outcomes);
+      const description = await this.tryVerifyOneCandidate(name, outcomes, guaranteedNames.has(name));
       if (description.length > 0) confirmed.push(description);
       await this.delay(DELAY_BETWEEN_REQUESTS_MS);
     }
@@ -78,18 +92,29 @@ export class StatusReportService {
     return confirmed.join(' ');
   }
 
-  /** One candidate's Sitniks/Claude hiccup shouldn't drop verification for the rest. */
-  private async tryVerifyOneCandidate(name: string, outcomes: ChatOutcome[]): Promise<string> {
+  /**
+   * One candidate's Sitniks/Claude hiccup shouldn't drop verification for the rest. For a guaranteed
+   * client conflict, a hiccup still can't drop it from the report — falls back to the mistakes text
+   * already captured during evaluation instead of an empty string.
+   */
+  private async tryVerifyOneCandidate(name: string, outcomes: ChatOutcome[], guaranteedConflict: boolean): Promise<string> {
     const outcome = outcomes.find((candidate) => candidate.clientName === name);
     if (!outcome) return '';
 
     try {
       const messagesResponse = await this.sitniksChatMessagesService.listMessages({ chatId: outcome.chatId, limit: 50 });
-      return await this.claudeSynthesisService.verifyCriticalChat(name, messagesResponse.data);
+      const description = await this.claudeSynthesisService.verifyCriticalChat(name, messagesResponse.data, guaranteedConflict);
+      return description.length > 0 ? description : this.fallbackConflictLine(outcome, guaranteedConflict);
     } catch (error) {
       this.logger.warn(`Could not verify critical candidate ${name}: ${(error as Error).message}`);
-      return '';
+      return this.fallbackConflictLine(outcome, guaranteedConflict);
     }
+  }
+
+  /** Guarantees the client-conflict rule survives a Claude/Sitniks hiccup, using the mistakes text already on hand. */
+  private fallbackConflictLine(outcome: ChatOutcome, guaranteedConflict: boolean): string {
+    if (!guaranteedConflict) return '';
+    return `${outcome.clientName} — конфликт с клиентом: ${outcome.mistakes}`;
   }
 
   /**
@@ -193,6 +218,7 @@ export class StatusReportService {
       mistakes: evaluation.mistakes,
       recommendation: evaluation.recommendation,
       isLost: this.isLost(messagesResponse.data),
+      clientConflict: evaluation.clientConflict,
     };
   }
 

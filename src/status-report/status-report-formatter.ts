@@ -11,11 +11,12 @@ type ManagerStats = { managerName: string; chatsEvaluated: number; averageScore:
 /** Telegram HTML parse_mode — emoji + bold labels, blank line between blocks, per the owner's approved mock-up. */
 export function formatChatBlock(outcome: ChatOutcome): string {
   const lostFlag = outcome.isLost ? '🔴 <b>ПОТЕРЯНО</b> — ' : '';
+  const conflictFlag = outcome.clientConflict ? '⚠️ <b>КОНФЛИКТ С КЛИЕНТОМ</b> — ' : '';
   const closingIcon = outcome.purchased ? '✅' : '‼️';
   const closingLabel = outcome.purchased ? 'Клиента закрыли' : 'Клиента не закрыли';
   const managers = formatManagerNames(outcome.managerNames);
   return [
-    `${lostFlag}⚡<b>${escapeHtml(outcome.clientName)}</b> (${managers}) — Оценка: ${outcome.score}/5`,
+    `${lostFlag}${conflictFlag}⚡<b>${escapeHtml(outcome.clientName)}</b> (${managers}) — Оценка: ${outcome.score}/5`,
     `✔️<b>Что хорошо:</b> ${escapeHtml(outcome.goodPoints)}`,
     `${closingIcon}<b>${closingLabel}:</b> ${escapeHtml(outcome.closingSummary)}`,
     `❌<b>Ошибки менеджера:</b> ${escapeHtml(outcome.mistakes)}`,

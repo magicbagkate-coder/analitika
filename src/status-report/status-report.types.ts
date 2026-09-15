@@ -15,4 +15,5 @@ export type ChatOutcome = {
   mistakes: string;
   recommendation: string;
   isLost: boolean;
+  clientConflict: boolean;
 };

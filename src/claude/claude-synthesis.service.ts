@@ -42,15 +42,21 @@ export class ClaudeSynthesisService {
     return this.extractSynthesis(response);
   }
 
-  /** Re-reads the FULL dialog before confirming (or rejecting) a candidate as genuinely critical. */
-  async verifyCriticalChat(clientName: string, messages: ChatMessage[]): Promise<string> {
+  /**
+   * Re-reads the FULL dialog before confirming (or rejecting) a candidate as genuinely critical.
+   * `guaranteedConflict` is set for chats StatusReportService already flagged via clientConflict —
+   * the owner's rule (2026-09-15): any client complaint/irritation about the communication itself is
+   * 100% reported, no LLM discretion to drop it here. In that mode this call only describes the
+   * already-confirmed conflict and must not return an empty string.
+   */
+  async verifyCriticalChat(clientName: string, messages: ChatMessage[], guaranteedConflict = false): Promise<string> {
     const transcript = formatTranscript(messages);
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
       max_tokens: 800,
       tools: [this.buildVerificationTool()],
       tool_choice: { type: 'tool', name: VERIFICATION_TOOL_NAME },
-      messages: [{ role: 'user', content: this.buildVerificationPrompt(clientName, transcript) }],
+      messages: [{ role: 'user', content: this.buildVerificationPrompt(clientName, transcript, guaranteedConflict) }],
     });
 
     return this.extractVerification(response);
@@ -103,7 +109,22 @@ export class ClaudeSynthesisService {
     };
   }
 
-  private buildVerificationPrompt(clientName: string, transcript: string): string {
+  private buildVerificationPrompt(clientName: string, transcript: string, guaranteedConflict: boolean): string {
+    if (guaranteedConflict) {
+      return [
+        `Ниже — ПОЛНАЯ переписка менеджеров с клиенткой ${clientName}. Клиентка уже явно выразила`,
+        'недовольство самой коммуникацией менеджеров (раздражение, просьба прекратить писать, жалоба на',
+        'навязчивость, угроза пожаловаться и т.п.) — это НЕ подлежит сомнению и НЕ подлежит переоценке здесь,',
+        'по правилу владелицы магазина такой чат 100% должен попасть в отчёт "Обратить внимание".',
+        'Твоя единственная задача — описать сам конфликт фактически в 1-2 предложениях: что конкретно',
+        'вызвало недовольство клиентки, кто из менеджеров (по имени) и на каком этапе это сделал, чем',
+        'закончилось (извинились/эскалировали/без ответа). НИКОГДА не возвращай пустую строку в этом режиме —',
+        'даже если ситуация выглядит уже сглаженной извинениями, опиши сам факт конфликта.',
+        '',
+        transcript,
+      ].join('\n');
+    }
+
     return [
       `Ниже — ПОЛНАЯ переписка менеджеров с клиенткой ${clientName}. По краткому описанию ошибок эта`,
       'ситуация выглядела как требующая срочного личного внимания владелицы магазина. Перечитай весь',

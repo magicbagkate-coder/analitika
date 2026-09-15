@@ -12,6 +12,7 @@ export type ChatEvaluationResult = {
   closingSummary: string;
   mistakes: string;
   recommendation: string;
+  clientConflict: boolean;
 };
 
 export type EvaluateChatParams = {
