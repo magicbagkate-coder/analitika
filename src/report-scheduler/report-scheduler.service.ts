@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { getKyivHourMinute } from '../kyiv-time';
+import { ManagerCharacteristicsService } from '../manager-characteristics/manager-characteristics.service';
 import { OrderSuccessAnalysisService } from '../order-success-analysis/order-success-analysis.service';
 import { runWithWatchdog } from '../report-watchdog';
 import { REPORT_TIMES } from '../status-report/status-report.constants';
@@ -9,11 +10,12 @@ import { TelegramService } from '../telegram/telegram.service';
 const CHECK_INTERVAL_MS = 60 * 1000;
 
 /**
- * Single clock for both twice-daily reports. Owner's explicit instruction (2026-09-15): the two
- * must run strictly back to back, not in parallel — "Замовлення створено" completes fully, THEN
- * "Вибір товару" starts immediately — so they never interleave in the Telegram group and both
- * reliably land together, twice a day. Each still gets its own watchdog (see report-watchdog.ts),
- * so one stalling doesn't silently take the other down with it.
+ * Single clock for both twice-daily reports plus the combined manager characteristic that follows
+ * them. Owner's explicit instruction (2026-09-15): the three must run strictly back to back, not in
+ * parallel — "Замовлення створено" completes fully, THEN "Вибір товару", THEN the per-manager
+ * summary reads what both just wrote to evaluation_history — so nothing interleaves in the Telegram
+ * group and everything reliably lands together, twice a day. Each still gets its own watchdog (see
+ * report-watchdog.ts), so one stalling doesn't silently take the others down with it.
  */
 @Injectable()
 export class ReportSchedulerService implements OnModuleInit {
@@ -23,6 +25,7 @@ export class ReportSchedulerService implements OnModuleInit {
   constructor(
     private readonly orderSuccessAnalysisService: OrderSuccessAnalysisService,
     private readonly statusReportService: StatusReportService,
+    private readonly managerCharacteristicsService: ManagerCharacteristicsService,
     private readonly telegramService: TelegramService,
   ) {}
 
@@ -45,7 +48,16 @@ export class ReportSchedulerService implements OnModuleInit {
 
   /** Public so a one-off script can invoke the exact production sequence. */
   async runBoth(): Promise<void> {
+    // Captured before either report runs, so ManagerCharacteristicsService's evaluation_history
+    // query (findSince) picks up every row either one writes during this run, from both statuses.
+    const runStartedAt = new Date();
     await runWithWatchdog(this.orderSuccessAnalysisService.runAnalysis(), 'Анализ "Замовлення створено"', this.telegramService, this.logger);
     await runWithWatchdog(this.statusReportService.runReport(), 'Отчёт "Вибір товару"', this.telegramService, this.logger);
+    await runWithWatchdog(
+      this.managerCharacteristicsService.runSummary(runStartedAt),
+      'Характеристика менеджеров',
+      this.telegramService,
+      this.logger,
+    );
   }
 }
