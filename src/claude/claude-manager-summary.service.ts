@@ -113,7 +113,12 @@ export class ClaudeManagerSummaryService {
     const toolUse = response.content.find((block) => block.type === 'tool_use');
     if (!toolUse || toolUse.type !== 'tool_use') return [];
 
-    const input = toolUse.input as { characteristics: ManagerCharacteristic[] };
+    // `characteristics` itself isn't guaranteed to be an array — a forced tool call came back with
+    // something else there once already (2026-09-16, "input.characteristics.filter is not a
+    // function", swallowed by the caller's try/catch and silently dropped the whole block).
+    const input = toolUse.input as Partial<{ characteristics: ManagerCharacteristic[] }>;
+    if (!Array.isArray(input.characteristics)) return [];
+
     return input.characteristics.filter((characteristic) => this.isValid(characteristic));
   }
 
