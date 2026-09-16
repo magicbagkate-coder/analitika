@@ -31,10 +31,11 @@ export class ManagerCharacteristicsService {
 
     const managers = this.groupByManager(rows);
     const characteristics = await this.trySynthesize(managers);
-    const text = formatManagerCharacteristics(characteristics);
-    if (text.length === 0) return;
+    const messages = formatManagerCharacteristics(characteristics);
 
-    await this.trySend(text);
+    for (const message of messages) {
+      await this.trySend(message);
+    }
   }
 
   /**

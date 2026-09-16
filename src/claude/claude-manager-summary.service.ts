@@ -32,8 +32,9 @@ export class ClaudeManagerSummaryService {
 
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      // Same headroom fix as ClaudeSynthesisService — see its comment (2026-09-15 incident).
-      max_tokens: 4000,
+      // 4000 wasn't enough with ~14-19 managers and detailed notes (2026-09-16 recovery run —
+      // came back with several managers silently missing from the array, stop_reason max_tokens).
+      max_tokens: 8192,
       tools: [this.buildTool()],
       tool_choice: { type: 'tool', name: CHARACTERISTICS_TOOL_NAME },
       messages: [{ role: 'user', content: this.buildPrompt(managers) }],
