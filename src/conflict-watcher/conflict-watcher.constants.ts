@@ -39,7 +39,6 @@ export const CONFLICT_KEYWORDS: string[] = [
   'грубо',
   'тролін',
   'тролл',
-  'здорова',
 ];
 
 /** Prefix for the tag tracking which client message already triggered an alert (see needsConflictAlert). */

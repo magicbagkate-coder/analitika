@@ -89,11 +89,13 @@ export class ConflictWatcherService implements OnModuleInit {
     if (!needsConflictAlert(chat.tags, latestMessage.id)) return;
 
     const clientName = chat.userNickName ?? chat.userName;
-    // Not `guaranteedConflict: true` — that mode forces Claude to describe a conflict even when
-    // there isn't one, and is meant for StatusReportService's already-confirmed clientConflict flag.
-    // Here we only have a raw keyword hit (hasConflictSignal, deliberately over-inclusive), so Claude
-    // must be free to look at the full transcript and return an empty string for a false positive.
-    const description = await this.claudeSynthesisService.verifyCriticalChat(clientName, messagesResponse.data, false);
+    // verifyPossibleConflict, not verifyCriticalChat — that call answers a broader "is this critical
+    // for any reason" question (missed deal, unanswered promise, ...) and could produce a false
+    // "🚨 Конфликт" alert for a chat that's critical but not actually a communication conflict (real
+    // bug, 2026-09-16). Here we only have a raw keyword hit (hasConflictSignal, deliberately
+    // over-inclusive), so Claude must be free to look at the full transcript and return an empty
+    // string for a false positive.
+    const description = await this.claudeSynthesisService.verifyPossibleConflict(clientName, messagesResponse.data);
     if (description.length > 0) await this.sendAlert(clientName, description);
     await this.markAlerted(chat, latestMessage.id);
   }

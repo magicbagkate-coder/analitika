@@ -66,6 +66,50 @@ export class ClaudeSynthesisService {
     return this.extractVerification(response);
   }
 
+  /**
+   * ConflictWatcherService's unconfirmed path — a cheap keyword hit on the client's latest message
+   * (deliberately over-inclusive, see conflict-watcher.constants.ts), not yet verified as a real
+   * conflict. NOT the same question as verifyCriticalChat's general "is this critical" — a chat can
+   * be genuinely critical (missed deal, unanswered promise) without the client being irritated at
+   * the communication itself, and that must NOT produce a "🚨 Конфликт" alert (real bug, 2026-09-16:
+   * ConflictWatcherService was calling verifyCriticalChat(..., false), whose prompt never actually
+   * asks about a communication conflict specifically, so a chat could get flagged "critical" for an
+   * unrelated reason and still render as a false conflict alert).
+   */
+  async verifyPossibleConflict(clientName: string, messages: ChatMessage[]): Promise<string> {
+    const transcript = formatTranscript(messages);
+    const response = await this.client.messages.create({
+      model: this.appConfig.getAnthropicModel(),
+      max_tokens: 1200,
+      tools: [this.buildVerificationTool()],
+      tool_choice: { type: 'tool', name: VERIFICATION_TOOL_NAME },
+      messages: [{ role: 'user', content: this.buildPossibleConflictPrompt(clientName, transcript) }],
+    });
+
+    return this.extractVerification(response);
+  }
+
+  private buildPossibleConflictPrompt(clientName: string, transcript: string): string {
+    return [
+      `Ниже — ПОЛНАЯ переписка менеджеров с клиенткой ${clientName}. В её последнем сообщении есть`,
+      'слово или фраза, которая МОЖЕТ указывать на конфликт — но это только предварительный сигнал по',
+      'одному слову из текста, не факт. Перечитай весь диалог и определи строго: клиентка ДЕЙСТВИТЕЛЬНО',
+      'явно выражает недовольство именно КОММУНИКАЦИЕЙ менеджеров (пишут слишком часто/навязчиво, грубо',
+      'себя ведут, она прямо просит прекратить писать, жалуется, угрожает жалобой/блокировкой) — а не',
+      'просто отказывается от покупки, обсуждает доставку/оплату, или слово совпало случайно в другом',
+      'значении (например "скрін" в контексте "прикріпіть скрін товару", а не жалобы, или "грубо кажучи"',
+      'как оборот речи, а не описание поведения менеджера).',
+      'Если это НЕ явное недовольство коммуникацией — верни пустую строку, ДАЖЕ ЕСЛИ чат выглядит',
+      'проблемным по другой причине (упущенная сделка, ошибка менеджера, зависший заказ) — это не конфликт',
+      'с клиентом, для таких случаев есть другой механизм отчёта, сюда их включать нельзя.',
+      'Если это реальный конфликт — опиши в 1-2 предложениях: что именно вызвало недовольство, кто из',
+      'менеджеров (по имени) и на каком этапе, чем закончилось. Не преувеличивай — если сомневаешься,',
+      'лучше вернуть пустую строку.',
+      '',
+      transcript,
+    ].join('\n');
+  }
+
   private buildSynthesisPrompt(outcomes: PatternSynthesisInput[]): string {
     const rows = outcomes
       .map((outcome) => `${outcome.clientName} (${describeManagersInline(outcome.managerNames)}) — ${outcome.score}/5: ${outcome.mistakes}`)
