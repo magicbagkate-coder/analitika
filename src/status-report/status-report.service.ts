@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ClaudeSynthesisService } from '../claude/claude-synthesis.service';
+import { collectManagerNames } from '../claude/manager-context';
 import { EvaluationService } from '../evaluation/evaluation.service';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
@@ -199,7 +200,7 @@ export class StatusReportService {
 
     const recentMessages = filterToRecentWindow(messagesResponse.data, ANALYSIS_WINDOW_HOURS);
     const clientName = chat.userNickName ?? chat.userName;
-    const managerNames = this.collectManagerNames(recentMessages);
+    const managerNames = collectManagerNames(recentMessages);
     const evaluation = await this.evaluationService.evaluateAndPublish({
       chatId: chat.id,
       existingTags: chat.tags,
@@ -235,15 +236,6 @@ export class StatusReportService {
     return minutesSinceLastMessage >= LOST_THRESHOLD_MINUTES;
   }
 
-  /**
-   * Real manager names from the (already ANALYSIS_WINDOW_HOURS-filtered) messages themselves,
-   * oldest to newest — assignedManagerId doesn't reliably resolve to a name.
-   */
-  private collectManagerNames(messages: ChatMessage[]): string[] {
-    const chronological = [...messages].reverse();
-    const names = chronological.map((message) => message.managerName).filter((name): name is string => Boolean(name));
-    return Array.from(new Set(names));
-  }
 
   /** Skip chats still being actively worked — judge only ones that have gone quiet. */
   private isQuietLongEnough(chat: ChatListItem): boolean {

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeManagerSummaryService } from '../claude/claude-manager-summary.service';
+import { getCanonicalManagerName } from '../evaluation/manager-roles.constants';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { formatManagerCharacteristics } from './manager-characteristics-formatter';
@@ -36,11 +37,18 @@ export class ManagerCharacteristicsService {
     await this.trySend(text);
   }
 
+  /**
+   * Resolves each name to its canonical form before grouping — evaluation_history rows may still
+   * carry a short-name alias (older rows, or any future write path that forgets to normalize
+   * upstream), and grouping on the raw string would split one manager into two entries again (see
+   * manager-roles.constants.ts for the 2026-09-16 incident this guards against).
+   */
   private groupByManager(rows: EvaluationHistoryEntity[]): ManagerRunNotes[] {
     const byManager = new Map<string, ManagerRunNotes>();
 
     for (const row of rows) {
-      for (const managerName of row.managerNames) {
+      for (const rawManagerName of row.managerNames) {
+        const managerName = getCanonicalManagerName(rawManagerName);
         const manager = byManager.get(managerName) ?? { managerName, entries: [] };
         manager.entries.push({ source: row.source, score: row.score, note: row.note });
         byManager.set(managerName, manager);

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeSuccessService } from '../claude/claude-success.service';
+import { collectManagerNames } from '../claude/manager-context';
 import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute } from '../kyiv-time';
@@ -10,7 +11,6 @@ import { TelegramService } from '../telegram/telegram.service';
 import { formatSuccessAttentionBlock, formatSuccessBlock, formatSuccessSummary } from './order-success-analysis-formatter';
 import { ORDER_CREATED_STATUS, needsSuccessAnalysis, replaceSuccessTags } from './order-success-analysis.constants';
 import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
-import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 import type { OrderSuccessOutcome } from './order-success-analysis.types';
 
 const DELAY_BETWEEN_REQUESTS_MS = 1500;
@@ -92,7 +92,7 @@ export class OrderSuccessAnalysisService {
 
     const recentMessages = filterToRecentWindow(messagesResponse.data, ANALYSIS_WINDOW_HOURS);
     const clientName = chat.userNickName ?? chat.userName;
-    const managerNames = this.collectManagerNames(recentMessages);
+    const managerNames = collectManagerNames(recentMessages);
     const result = await this.claudeSuccessService.analyzeSuccessFactors(recentMessages, clientName);
     const score = result.hadUpsell ? SCORE_WITH_UPSELL : SCORE_WITHOUT_UPSELL;
 
@@ -119,13 +119,6 @@ export class OrderSuccessAnalysisService {
   private async publish(chat: ChatListItem, score: number, latestMessageId: string | undefined): Promise<void> {
     const tags = replaceSuccessTags(chat.tags, score, latestMessageId);
     await this.sitniksChatUpdateService.updateChat({ chatId: chat.id, tags });
-  }
-
-  /** Real manager names from message data, oldest to newest — same convention as StatusReportService. */
-  private collectManagerNames(messages: ChatMessage[]): string[] {
-    const chronological = [...messages].reverse();
-    const names = chronological.map((message) => message.managerName).filter((name): name is string => Boolean(name));
-    return Array.from(new Set(names));
   }
 
   /**

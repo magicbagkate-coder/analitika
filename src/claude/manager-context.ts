@@ -1,9 +1,17 @@
-import { getManagerRole } from '../evaluation/manager-roles.constants';
+import { getCanonicalManagerName, getManagerRole } from '../evaluation/manager-roles.constants';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
-/** Real manager names from message data, oldest to newest — assignedManagerId doesn't reliably resolve to a name. */
+/**
+ * Real manager names from message data, oldest to newest, resolved to their canonical name —
+ * assignedManagerId doesn't reliably resolve to a name, and Sitniks records the same real person
+ * under different literal strings (short name vs. full name) depending on context, so a raw
+ * dedupe alone would still show one person as two (see manager-roles.constants.ts).
+ */
 export function collectManagerNames(messages: ChatMessage[]): string[] {
-  const names = messages.map((message) => message.managerName).filter((name): name is string => Boolean(name));
+  const names = messages
+    .map((message) => message.managerName)
+    .filter((name): name is string => Boolean(name))
+    .map((name) => getCanonicalManagerName(name));
   return Array.from(new Set(names));
 }
 

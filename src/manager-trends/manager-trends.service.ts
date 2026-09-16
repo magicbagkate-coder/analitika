@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ClaudeTrendsService } from '../claude/claude-trends.service';
+import { getCanonicalManagerName } from '../evaluation/manager-roles.constants';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute, getKyivWeekday } from '../kyiv-time';
 import { runWithWatchdog } from '../report-watchdog';
@@ -68,12 +69,14 @@ export class ManagerTrendsService implements OnModuleInit {
     await this.trySend(digest);
   }
 
+  /** Resolves each name to its canonical form first — see manager-roles.constants.ts (2026-09-16 incident). */
   private groupByManagerAndWeek(rows: EvaluationHistoryEntity[], now: Date): Map<string, Map<number, WeeklyBucket>> {
     const byManager = new Map<string, Map<number, WeeklyBucket>>();
 
     for (const row of rows) {
       const weekIndex = weekIndexOf(row.recordedAt, now);
-      for (const managerName of row.managerNames) {
+      for (const rawManagerName of row.managerNames) {
+        const managerName = getCanonicalManagerName(rawManagerName);
         const weeks = byManager.get(managerName) ?? new Map<number, WeeklyBucket>();
         const bucket = weeks.get(weekIndex) ?? { scores: [], notes: [] };
         bucket.scores.push(row.score);

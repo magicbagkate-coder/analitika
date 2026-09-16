@@ -1,3 +1,4 @@
+import { getCanonicalManagerName } from '../evaluation/manager-roles.constants';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
@@ -25,7 +26,9 @@ export function formatTranscript(messages: ChatMessage[]): string {
 }
 
 function speakerLabel(message: ChatMessage, accountSentBy: string | undefined): string {
-  if (message.managerName) return message.managerName;
+  // Resolved to the canonical name so a manager who appears under a short name in one message and
+  // the full name in another still reads as ONE consistent person across the whole transcript.
+  if (message.managerName) return getCanonicalManagerName(message.managerName);
   if (accountSentBy && message.sentBy === accountSentBy) return BOT_SPEAKER_LABEL;
   return 'клієнтка';
 }
