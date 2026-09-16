@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ClaudeSynthesisService } from '../claude/claude-synthesis.service';
 import { TARGET_STATUS } from '../evaluation/evaluation.constants';
+import { ReportRunStatusService } from '../report-run-status/report-run-status.service';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
@@ -35,6 +36,7 @@ export class ConflictWatcherService implements OnModuleInit {
     private readonly sitniksChatUpdateService: SitniksChatUpdateService,
     private readonly claudeSynthesisService: ClaudeSynthesisService,
     private readonly telegramService: TelegramService,
+    private readonly reportRunStatusService: ReportRunStatusService,
   ) {}
 
   onModuleInit(): void {
@@ -43,7 +45,19 @@ export class ConflictWatcherService implements OnModuleInit {
     }, POLL_INTERVAL_MS);
   }
 
+  /**
+   * Skips the whole cycle — no Sitniks calls at all — while the twice-daily report is running.
+   * Contractor's rule (2026-09-16): Node is single-threaded and the two independent timers hitting
+   * the same Sitniks API caused a confirmed 429 collision (2026-09-15); while the report runs,
+   * nothing else should touch that API. Checked once per 10-minute tick, not awaited against the
+   * report's own promise, so a crash in either one can't wedge the other.
+   */
   async pollAndAlert(): Promise<void> {
+    if (this.reportRunStatusService.isBusy()) {
+      this.logger.log('Skipping conflict poll — twice-daily report is currently running');
+      return;
+    }
+
     const chats = await this.fetchRecentlyActiveChats();
 
     for (const chat of chats) {

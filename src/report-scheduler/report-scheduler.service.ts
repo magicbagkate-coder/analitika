@@ -1,13 +1,16 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute } from '../kyiv-time';
 import { ManagerCharacteristicsService } from '../manager-characteristics/manager-characteristics.service';
 import { OrderSuccessAnalysisService } from '../order-success-analysis/order-success-analysis.service';
+import { ReportRunStatusService } from '../report-run-status/report-run-status.service';
 import { runWithWatchdog } from '../report-watchdog';
 import { REPORT_TIMES } from '../status-report/status-report.constants';
 import { StatusReportService } from '../status-report/status-report.service';
 import { TelegramService } from '../telegram/telegram.service';
 
 const CHECK_INTERVAL_MS = 60 * 1000;
+const PROGRESS_PING_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * Single clock for both twice-daily reports plus the combined manager characteristic that follows
@@ -16,6 +19,12 @@ const CHECK_INTERVAL_MS = 60 * 1000;
  * summary reads what both just wrote to evaluation_history — so nothing interleaves in the Telegram
  * group and everything reliably lands together, twice a day. Each still gets its own watchdog (see
  * report-watchdog.ts), so one stalling doesn't silently take the others down with it.
+ *
+ * Contractor's rule (2026-09-16): while this runs, ReportRunStatusService marks the whole app "busy"
+ * so ConflictWatcherService's independent 10-minute timer skips its cycle entirely — the two hitting
+ * the same Sitniks API at once caused a confirmed 429 collision (2026-09-15). Also sends one
+ * "started" notice and an hourly progress ping (chats recorded so far) so a long run — the backlog
+ * was 233 chats on 2026-09-16 — reads as "still working", not silence.
  */
 @Injectable()
 export class ReportSchedulerService implements OnModuleInit {
@@ -27,6 +36,8 @@ export class ReportSchedulerService implements OnModuleInit {
     private readonly statusReportService: StatusReportService,
     private readonly managerCharacteristicsService: ManagerCharacteristicsService,
     private readonly telegramService: TelegramService,
+    private readonly reportRunStatusService: ReportRunStatusService,
+    private readonly evaluationHistoryService: EvaluationHistoryService,
   ) {}
 
   onModuleInit(): void {
@@ -51,13 +62,40 @@ export class ReportSchedulerService implements OnModuleInit {
     // Captured before either report runs, so ManagerCharacteristicsService's evaluation_history
     // query (findSince) picks up every row either one writes during this run, from both statuses.
     const runStartedAt = new Date();
-    await runWithWatchdog(this.orderSuccessAnalysisService.runAnalysis(), 'Анализ "Замовлення створено"', this.telegramService, this.logger);
-    await runWithWatchdog(this.statusReportService.runReport(), 'Отчёт "Вибір товару"', this.telegramService, this.logger);
-    await runWithWatchdog(
-      this.managerCharacteristicsService.runSummary(runStartedAt),
-      'Характеристика менеджеров',
-      this.telegramService,
-      this.logger,
-    );
+    this.reportRunStatusService.start();
+    await this.trySend('🔄<b>Начинаем формирование отчёта</b> (Замовлення створено → Вибір товару → Характеристика менеджерів)...');
+
+    const progressTimer = setInterval(() => {
+      this.sendProgressPing(runStartedAt).catch((error) => this.logger.warn(`Progress ping failed: ${(error as Error).message}`));
+    }, PROGRESS_PING_INTERVAL_MS);
+
+    try {
+      await runWithWatchdog(this.orderSuccessAnalysisService.runAnalysis(), 'Анализ "Замовлення створено"', this.telegramService, this.logger);
+      await runWithWatchdog(this.statusReportService.runReport(), 'Отчёт "Вибір товару"', this.telegramService, this.logger);
+      await runWithWatchdog(
+        this.managerCharacteristicsService.runSummary(runStartedAt),
+        'Характеристика менеджеров',
+        this.telegramService,
+        this.logger,
+      );
+    } finally {
+      clearInterval(progressTimer);
+      this.reportRunStatusService.finish();
+    }
+  }
+
+  /** Calmer than the per-step watchdog alert — a routine "still working" heads-up, not "looks stuck". */
+  private async sendProgressPing(runStartedAt: Date): Promise<void> {
+    const rows = await this.evaluationHistoryService.findSince(runStartedAt);
+    const elapsedMinutes = Math.round((Date.now() - runStartedAt.getTime()) / 60_000);
+    await this.trySend(`⏳<b>Отчёт всё ещё формируется</b> (идёт уже ${elapsedMinutes} мин, обработано чатов: ${rows.length}) — это нормально при большом числе чатов, не ошибка.`);
+  }
+
+  private async trySend(text: string): Promise<void> {
+    try {
+      await this.telegramService.sendMessage(text);
+    } catch (error) {
+      this.logger.warn(`Could not send status message: ${(error as Error).message}`);
+    }
   }
 }
