@@ -23,7 +23,10 @@ export class ClaudeService {
     const managerNames = collectManagerNames(messages);
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      max_tokens: 1200,
+      // Bumped from 1200 (2026-09-15 incident) — thinking can eat the budget before every field is
+      // written, and extractEvaluation now throws on any missing field rather than silently
+      // fabricating a score, so a too-tight budget here means a real chat gets skipped this run.
+      max_tokens: 2000,
       tools: [this.buildEvaluationTool()],
       tool_choice: { type: 'tool', name: EVALUATION_TOOL_NAME },
       messages: [
@@ -176,6 +179,23 @@ export class ClaudeService {
     const toolUse = response.content.find((block) => block.type === 'tool_use');
     if (!toolUse || toolUse.type !== 'tool_use') throw new Error('Claude did not return an evaluation');
 
-    return toolUse.input as ChatEvaluationResult;
+    const input = toolUse.input as Partial<ChatEvaluationResult>;
+    this.assertComplete(input, response.stop_reason);
+    return input as ChatEvaluationResult;
+  }
+
+  /**
+   * A forced tool call isn't a hard type guarantee — a missing field here once reached escapeHtml
+   * downstream unguarded and crashed the whole report (2026-09-15, see project memory). Throwing
+   * lets the existing per-chat error isolation (StatusReportService.tryEvaluateOneChat) skip just
+   * this one chat instead of a malformed value corrupting the report, or worse, silently
+   * fabricating a score that looks like a real evaluation.
+   */
+  private assertComplete(input: Partial<ChatEvaluationResult>, stopReason: string | null): void {
+    const requiredKeys = ['score', 'purchased', 'goodPoints', 'closingSummary', 'mistakes', 'recommendation', 'clientConflict'] as const;
+    const missing = requiredKeys.filter((key) => input[key] === undefined);
+    if (missing.length > 0) {
+      throw new Error(`Claude returned an incomplete evaluation (missing: ${missing.join(', ')}, stop_reason: ${stopReason})`);
+    }
   }
 }

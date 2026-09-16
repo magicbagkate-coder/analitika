@@ -56,7 +56,8 @@ export class ClaudeSynthesisService {
     const transcript = formatTranscript(messages);
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      max_tokens: 800,
+      // Bumped from 800 (2026-09-15 incident, same headroom reasoning as the batch synthesis calls).
+      max_tokens: 1200,
       tools: [this.buildVerificationTool()],
       tool_choice: { type: 'tool', name: VERIFICATION_TOOL_NAME },
       messages: [{ role: 'user', content: this.buildVerificationPrompt(clientName, transcript, guaranteedConflict) }],
@@ -176,7 +177,11 @@ export class ClaudeSynthesisService {
     const toolUse = response.content.find((block) => block.type === 'tool_use');
     if (!toolUse || toolUse.type !== 'tool_use') return '';
 
-    const input = toolUse.input as { description: string };
-    return input.description;
+    // A forced tool call isn't a hard type guarantee — an incomplete response (e.g. hit max_tokens)
+    // once reached escapeHtml downstream as a bare `undefined` (2026-09-15). '' is already the
+    // established "nothing to report" sentinel every caller here checks for, so it's a safe default —
+    // ConflictWatcherService/StatusReportService's guaranteedConflict callers fall back from it too.
+    const input = toolUse.input as Partial<{ description: string }>;
+    return input.description ?? '';
   }
 }

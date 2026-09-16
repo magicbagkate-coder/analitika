@@ -33,7 +33,9 @@ export class ClaudeSuccessService {
     const managerNames = collectManagerNames(messages);
     const response = await this.client.messages.create({
       model: this.appConfig.getAnthropicModel(),
-      max_tokens: 1000,
+      // Same headroom reasoning as ClaudeService.evaluateChat (2026-09-15 incident) — extractResult
+      // now throws on an incomplete response instead of risking a malformed value downstream.
+      max_tokens: 1600,
       tools: [this.buildSuccessTool()],
       tool_choice: { type: 'tool', name: SUCCESS_TOOL_NAME },
       messages: [
@@ -187,6 +189,10 @@ export class ClaudeSuccessService {
     const toolUse = response.content.find((block) => block.type === 'tool_use');
     if (!toolUse || toolUse.type !== 'tool_use') throw new Error('Claude did not return success factors');
 
-    return toolUse.input as SuccessFactorsResult;
+    const input = toolUse.input as Partial<SuccessFactorsResult>;
+    if (input.successFactors === undefined || input.hadUpsell === undefined) {
+      throw new Error(`Claude returned an incomplete success-factors result (stop_reason: ${response.stop_reason})`);
+    }
+    return input as SuccessFactorsResult;
   }
 }
