@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { TelegramService } from './telegram/telegram.service';
 
-const WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000;
+const WATCHDOG_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Runs `work` to actual completion (doesn't move on early), but if it hasn't settled within
