@@ -220,6 +220,7 @@ export class StatusReportService {
       recommendation: evaluation.recommendation,
       isLost: this.isLost(messagesResponse.data),
       clientConflict: evaluation.clientConflict,
+      responseTimes: evaluation.responseTimes,
     };
   }
 

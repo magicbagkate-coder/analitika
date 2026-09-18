@@ -15,13 +15,23 @@ export function formatChatBlock(outcome: ChatOutcome): string {
   const closingIcon = outcome.purchased ? '✅' : '‼️';
   const closingLabel = outcome.purchased ? 'Клиента закрыли' : 'Клиента не закрыли';
   const managers = formatManagerNames(outcome.managerNames);
+  const responseTimeLine = formatResponseTimesLine(outcome.responseTimes);
   return [
     `${lostFlag}${conflictFlag}⚡<b>${escapeHtml(outcome.clientName)}</b> (${managers}) — Оценка: ${outcome.score}/5`,
     `✔️<b>Что хорошо:</b> ${escapeHtml(outcome.goodPoints)}`,
     `${closingIcon}<b>${closingLabel}:</b> ${escapeHtml(outcome.closingSummary)}`,
     `❌<b>Ошибки менеджера:</b> ${escapeHtml(outcome.mistakes)}`,
     `📍<b>Рекомендация к закрытию:</b> ${escapeHtml(outcome.recommendation)}`,
+    ...(responseTimeLine ? [responseTimeLine] : []),
   ].join('\n\n');
+}
+
+/** "⏱ Ответы менеджера: 5 хв, 12 хв, 3 хв (медіана — 5 хв)" — owner's approved format. Empty if unmeasurable. */
+function formatResponseTimesLine(responseTimes: ChatOutcome['responseTimes']): string {
+  if (responseTimes.intervalsMinutes.length === 0 || responseTimes.medianMinutes === null) return '';
+
+  const intervals = responseTimes.intervalsMinutes.map((minutes) => `${minutes} хв`).join(', ');
+  return `⏱ Ответы менеджера: ${intervals} (медіана — ${responseTimes.medianMinutes} хв)`;
 }
 
 /**

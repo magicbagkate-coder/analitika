@@ -104,6 +104,8 @@ export class OrderSuccessAnalysisService {
       score,
       source: 'order_created',
       note: result.successFactors,
+      // Response-time tracking is scoped to "Вибір товару" consultations, not closed-deal chats here.
+      medianResponseMinutes: null,
     });
 
     return {

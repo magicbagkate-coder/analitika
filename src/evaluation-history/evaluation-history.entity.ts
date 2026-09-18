@@ -26,6 +26,10 @@ export class EvaluationHistoryEntity {
   @Column('text')
   note!: string;
 
+  /** Median minutes the client waited per manager reply this chat, open-hours only — null if unmeasurable (see response-time.ts). */
+  @Column({ type: 'int', nullable: true })
+  medianResponseMinutes!: number | null;
+
   @CreateDateColumn()
   recordedAt!: Date;
 }

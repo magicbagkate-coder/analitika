@@ -1,3 +1,5 @@
+import type { ResponseTimeStats } from '../evaluation/response-time';
+
 /**
  * One evaluated chat, ready to be formatted into the Telegram report and the
  * local file backup. `managerNames` are real names pulled from each
@@ -16,4 +18,5 @@ export type ChatOutcome = {
   recommendation: string;
   isLost: boolean;
   clientConflict: boolean;
+  responseTimes: ResponseTimeStats;
 };

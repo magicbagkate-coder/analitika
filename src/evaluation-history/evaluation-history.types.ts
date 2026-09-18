@@ -7,4 +7,5 @@ export type RecordEvaluationParams = {
   score: number;
   source: EvaluationSource;
   note: string;
+  medianResponseMinutes: number | null;
 };

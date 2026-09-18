@@ -4,7 +4,8 @@ import { EvaluationHistoryService } from '../evaluation-history/evaluation-histo
 import { SitniksChatNotesService } from '../sitniks-chat-notes/sitniks-chat-notes.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
 import { SCORE_TAG_PREFIX, buildLastEvaluatedMessageTag, withoutTrackingTags } from './evaluation.constants';
-import type { ChatEvaluationResult, EvaluateChatParams } from './evaluation.types';
+import { calculateResponseTimes } from './response-time';
+import type { ChatEvaluationOutcome, EvaluateChatParams } from './evaluation.types';
 
 /** Orchestrates one chat: Claude evaluation → tag + note written back to Sitniks, plus history for trends. */
 @Injectable()
@@ -18,11 +19,13 @@ export class EvaluationService {
     private readonly evaluationHistoryService: EvaluationHistoryService,
   ) {}
 
-  async evaluateAndPublish(params: EvaluateChatParams): Promise<ChatEvaluationResult> {
+  async evaluateAndPublish(params: EvaluateChatParams): Promise<ChatEvaluationOutcome> {
     const evaluation = await this.claudeService.evaluateChat(params.messages, params.clientName);
     // messages is newest-first (Sitniks API order) — [0] is what this score is actually based on.
     const latestMessageId = params.messages[0]?.id;
     const tags = this.replaceScoreTag(params.existingTags, evaluation.score, latestMessageId);
+    // Pure arithmetic on timestamps already in `messages` — no Claude call, no extra API cost.
+    const responseTimes = calculateResponseTimes(params.messages);
 
     await this.sitniksChatUpdateService.updateChat({ chatId: params.chatId, tags });
     // Only the recommendation goes to Sitniks — the rest is Telegram-only (see status-report.service.ts).
@@ -34,10 +37,11 @@ export class EvaluationService {
       score: evaluation.score,
       source: 'product_selection',
       note: evaluation.mistakes,
+      medianResponseMinutes: responseTimes.medianMinutes,
     });
 
     this.logger.log(`Evaluated chat ${params.chatId}: ${evaluation.score}/5`);
-    return evaluation;
+    return { ...evaluation, responseTimes };
   }
 
   /** A single Sitniks/Claude hiccup shouldn't abort the whole evaluation. */

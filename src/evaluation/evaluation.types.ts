@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
+import type { ResponseTimeStats } from './response-time';
 
 /**
  * Result of Claude scoring one chat. `recommendation` alone is written back
@@ -14,6 +15,9 @@ export type ChatEvaluationResult = {
   recommendation: string;
   clientConflict: boolean;
 };
+
+/** ChatEvaluationResult plus the response-time read — computed in code, not by Claude. */
+export type ChatEvaluationOutcome = ChatEvaluationResult & { responseTimes: ResponseTimeStats };
 
 export type EvaluateChatParams = {
   chatId: string;
