@@ -5,6 +5,7 @@ import { ConflictWatcherModule } from './conflict-watcher/conflict-watcher.modul
 import { DailyStatsStoreModule } from './daily-stats-store/daily-stats-store.module';
 import { DatabaseModule } from './database/database.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
+import { LogsModule } from './logs/logs.module';
 import { ManagerTrendsModule } from './manager-trends/manager-trends.module';
 import { OrderSuccessAnalysisModule } from './order-success-analysis/order-success-analysis.module';
 import { ReportSchedulerModule } from './report-scheduler/report-scheduler.module';
@@ -55,6 +56,7 @@ import { StatusReportModule } from './status-report/status-report.module';
   imports: [
     AppConfigModule,
     DatabaseModule,
+    LogsModule,
     DailyStatsStoreModule,
     SitniksChatModule,
     SitniksChatListModule,

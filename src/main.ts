@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
+import { PersistentLogger } from './logs/persistent-logger';
 
 /**
  * Node terminates the whole process on an unhandled promise rejection by default (Node 15+) — one
@@ -19,9 +20,13 @@ process.on('unhandledRejection', (reason) => {
 });
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
-  const appConfig = app.get(AppConfigService);
+  // bufferLogs holds every log call made during startup (including inside modules that run code in
+  // their constructors/onModuleInit) until useLogger below is actually wired in, so nothing from
+  // boot is lost to the console-only default logger before PersistentLogger takes over.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(PersistentLogger));
 
+  const appConfig = app.get(AppConfigService);
   await app.listen(appConfig.getPort());
 }
 
