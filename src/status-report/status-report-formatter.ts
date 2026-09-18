@@ -1,5 +1,5 @@
 import { TARGET_STATUS } from '../evaluation/evaluation.constants';
-import { escapeHtml, formatManagerNames } from '../telegram/telegram-format';
+import { escapeHtml, formatManagerNames, formatResponseTimesLine } from '../telegram/telegram-format';
 import type { PatternSynthesisResult } from '../evaluation/evaluation.types';
 import type { ChatOutcome } from './status-report.types';
 
@@ -24,14 +24,6 @@ export function formatChatBlock(outcome: ChatOutcome): string {
     `📍<b>Рекомендация к закрытию:</b> ${escapeHtml(outcome.recommendation)}`,
     ...(responseTimeLine ? [responseTimeLine] : []),
   ].join('\n\n');
-}
-
-/** "⏱ Ответы менеджера: 5 хв, 12 хв, 3 хв (медіана — 5 хв)" — owner's approved format. Empty if unmeasurable. */
-function formatResponseTimesLine(responseTimes: ChatOutcome['responseTimes']): string {
-  if (responseTimes.intervalsMinutes.length === 0 || responseTimes.medianMinutes === null) return '';
-
-  const intervals = responseTimes.intervalsMinutes.map((minutes) => `${minutes} хв`).join(', ');
-  return `⏱ Ответы менеджера: ${intervals} (медіана — ${responseTimes.medianMinutes} хв)`;
 }
 
 /**

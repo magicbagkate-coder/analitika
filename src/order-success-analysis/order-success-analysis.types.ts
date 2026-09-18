@@ -1,3 +1,5 @@
+import type { ResponseTimeStats } from '../evaluation/response-time';
+
 /**
  * One chat from "Замовлення створено" — the deal is already closed, so this captures what worked.
  * score is deterministic, not Claude's judgment call: 5 if the deal included a confirmed upsell, 4
@@ -9,4 +11,5 @@ export type OrderSuccessOutcome = {
   managerNames: string[];
   successFactors: string;
   score: number;
+  responseTimes: ResponseTimeStats;
 };

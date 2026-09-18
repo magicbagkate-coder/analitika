@@ -1,4 +1,4 @@
-import { escapeHtml, formatManagerNames } from '../telegram/telegram-format';
+import { escapeHtml, formatManagerNames, formatResponseTimesLine } from '../telegram/telegram-format';
 import type { OrderSuccessOutcome } from './order-success-analysis.types';
 
 type ManagerDealStats = { managerName: string; dealsCount: number };
@@ -6,9 +6,11 @@ type ManagerDealStats = { managerName: string; dealsCount: number };
 /** Telegram HTML parse_mode — same emoji + bold + blank-line style as status-report-formatter. */
 export function formatSuccessBlock(outcome: OrderSuccessOutcome): string {
   const managers = formatManagerNames(outcome.managerNames);
+  const responseTimeLine = formatResponseTimesLine(outcome.responseTimes);
   return [
     `✅<b>${escapeHtml(outcome.clientName)}</b> (${managers}) — Оценка: ${outcome.score}/5`,
     `🏆<b>Що спрацювало:</b> ${escapeHtml(outcome.successFactors)}`,
+    ...(responseTimeLine ? [responseTimeLine] : []),
   ].join('\n\n');
 }
 

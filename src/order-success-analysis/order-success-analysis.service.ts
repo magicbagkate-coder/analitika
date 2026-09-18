@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeSuccessService } from '../claude/claude-success.service';
 import { collectManagerNames } from '../claude/manager-context';
 import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
+import { calculateResponseTimes } from '../evaluation/response-time';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute } from '../kyiv-time';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
@@ -95,6 +96,7 @@ export class OrderSuccessAnalysisService {
     const managerNames = collectManagerNames(recentMessages);
     const result = await this.claudeSuccessService.analyzeSuccessFactors(recentMessages, clientName);
     const score = result.hadUpsell ? SCORE_WITH_UPSELL : SCORE_WITHOUT_UPSELL;
+    const responseTimes = calculateResponseTimes(recentMessages);
 
     await this.publish(chat, score, latestMessageId);
     await this.evaluationHistoryService.tryRecord({
@@ -104,8 +106,7 @@ export class OrderSuccessAnalysisService {
       score,
       source: 'order_created',
       note: result.successFactors,
-      // Response-time tracking is scoped to "Вибір товару" consultations, not closed-deal chats here.
-      medianResponseMinutes: null,
+      medianResponseMinutes: responseTimes.medianMinutes,
     });
 
     return {
@@ -114,6 +115,7 @@ export class OrderSuccessAnalysisService {
       managerNames,
       successFactors: result.successFactors,
       score,
+      responseTimes,
     };
   }
 
