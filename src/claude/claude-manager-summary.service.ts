@@ -122,7 +122,8 @@ export class ClaudeManagerSummaryService {
     // function", swallowed by the caller's try/catch and silently dropped the whole block).
     const input = toolUse.input as Partial<{ characteristics: ManagerCharacteristic[] }>;
     if (!Array.isArray(input.characteristics)) {
-      this.logger.warn(`Manager characteristics tool input had no array (stop_reason: ${response.stop_reason})`);
+      const raw = JSON.stringify(toolUse.input).slice(0, 500);
+      this.logger.warn(`Manager characteristics tool input had no array (stop_reason: ${response.stop_reason}): ${raw}`);
       return [];
     }
 
