@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { createAnthropicClient } from './anthropic-client';
 import { getManagerRole } from '../evaluation/manager-roles.constants';
@@ -21,6 +21,7 @@ export type ManagerCharacteristic = { managerName: string; score: number; recurr
  */
 @Injectable()
 export class ClaudeManagerSummaryService {
+  private readonly logger = new Logger(ClaudeManagerSummaryService.name);
   private readonly client: Anthropic;
 
   constructor(private readonly appConfig: AppConfigService) {
@@ -111,15 +112,25 @@ export class ClaudeManagerSummaryService {
 
   private extractResult(response: Anthropic.Message): ManagerCharacteristic[] {
     const toolUse = response.content.find((block) => block.type === 'tool_use');
-    if (!toolUse || toolUse.type !== 'tool_use') return [];
+    if (!toolUse || toolUse.type !== 'tool_use') {
+      this.logger.warn(`No tool_use block in manager characteristics response (stop_reason: ${response.stop_reason})`);
+      return [];
+    }
 
     // `characteristics` itself isn't guaranteed to be an array — a forced tool call came back with
     // something else there once already (2026-09-16, "input.characteristics.filter is not a
     // function", swallowed by the caller's try/catch and silently dropped the whole block).
     const input = toolUse.input as Partial<{ characteristics: ManagerCharacteristic[] }>;
-    if (!Array.isArray(input.characteristics)) return [];
+    if (!Array.isArray(input.characteristics)) {
+      this.logger.warn(`Manager characteristics tool input had no array (stop_reason: ${response.stop_reason})`);
+      return [];
+    }
 
-    return input.characteristics.filter((characteristic) => this.isValid(characteristic));
+    const valid = input.characteristics.filter((characteristic) => this.isValid(characteristic));
+    if (valid.length < input.characteristics.length) {
+      this.logger.warn(`Dropped ${input.characteristics.length - valid.length}/${input.characteristics.length} invalid manager characteristics`);
+    }
+    return valid;
   }
 
   /**
