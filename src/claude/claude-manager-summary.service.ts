@@ -121,17 +121,33 @@ export class ClaudeManagerSummaryService {
     // something else there once already (2026-09-16, "input.characteristics.filter is not a
     // function", swallowed by the caller's try/catch and silently dropped the whole block).
     const input = toolUse.input as Partial<{ characteristics: ManagerCharacteristic[] }>;
-    if (!Array.isArray(input.characteristics)) {
+    const characteristics = Array.isArray(input.characteristics) ? input.characteristics : this.tryUnwrapStringified(input.characteristics);
+    if (!characteristics) {
       const raw = JSON.stringify(toolUse.input).slice(0, 500);
       this.logger.warn(`Manager characteristics tool input had no array (stop_reason: ${response.stop_reason}): ${raw}`);
       return [];
     }
 
-    const valid = input.characteristics.filter((characteristic) => this.isValid(characteristic));
-    if (valid.length < input.characteristics.length) {
-      this.logger.warn(`Dropped ${input.characteristics.length - valid.length}/${input.characteristics.length} invalid manager characteristics`);
+    const valid = characteristics.filter((characteristic) => this.isValid(characteristic));
+    if (valid.length < characteristics.length) {
+      this.logger.warn(`Dropped ${characteristics.length - valid.length}/${characteristics.length} invalid manager characteristics`);
     }
     return valid;
+  }
+
+  /**
+   * Observed 2026-09-18: the tool input came back as `{ characteristics: '{"characteristics":[...]}' }`
+   * — the whole object double-encoded as a JSON string under its own key, instead of a native array.
+   * Recovers that one specific shape rather than parsing arbitrary strings.
+   */
+  private tryUnwrapStringified(value: unknown): ManagerCharacteristic[] | null {
+    if (typeof value !== 'string') return null;
+    try {
+      const parsed = JSON.parse(value) as Partial<{ characteristics: ManagerCharacteristic[] }>;
+      return Array.isArray(parsed.characteristics) ? parsed.characteristics : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
