@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['log', 'warn', 'error'] });
   const managerCharacteristicsService = app.get(ManagerCharacteristicsService);
 
-  const since = new Date('2026-09-17T20:45:00Z');
+  const since = new Date('2026-09-18T12:44:00Z');
   console.log(`Rebuilding manager characteristics for evaluation_history rows since ${since.toISOString()}`);
 
   await managerCharacteristicsService.runSummary(since);
