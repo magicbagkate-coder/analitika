@@ -12,6 +12,8 @@ export type ChatMessage = {
   managerName?: string;
   text: string;
   createdAt: string;
+  /** Whether the CLIENT has opened/viewed this message yet — confirmed against a live response. */
+  isViewedByUser: boolean;
 };
 
 export type ListChatMessagesResponse = {

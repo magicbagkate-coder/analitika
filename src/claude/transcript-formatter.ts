@@ -21,7 +21,7 @@ export function formatTranscript(messages: ChatMessage[]): string {
   const accountSentBy = messages.find((message) => message.managerName)?.sentBy;
 
   return messages
-    .map((message) => `[${toKyivTime(message.createdAt)}] ${speakerLabel(message, accountSentBy)}: ${message.text}`)
+    .map((message) => `[${toKyivTime(message.createdAt)}] ${speakerLabel(message, accountSentBy)}: ${message.text}${unreadMarker(message)}`)
     .join('\n');
 }
 
@@ -31,6 +31,15 @@ function speakerLabel(message: ChatMessage, accountSentBy: string | undefined): 
   if (message.managerName) return getCanonicalManagerName(message.managerName);
   if (accountSentBy && message.sentBy === accountSentBy) return BOT_SPEAKER_LABEL;
   return 'клієнтка';
+}
+
+/**
+ * Owner's rule (2026-09-18): касатель/менеджери не роблять повторне касання, якщо клієнтка ще не
+ * прочитала попереднє повідомлення — не спамимо в непрочитаний чат. Only meaningful on a
+ * staff-authored message (Sitniks' `isViewedByUser` tracks whether the CLIENT viewed it).
+ */
+function unreadMarker(message: ChatMessage): string {
+  return message.managerName && !message.isViewedByUser ? ' [клієнтка ЩЕ НЕ прочитала це повідомлення]' : '';
 }
 
 export function toKyivTime(iso: string): string {
