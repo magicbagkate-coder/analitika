@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 import { getManagerRole } from '../evaluation/manager-roles.constants';
 import type { EvaluationSource } from '../evaluation-history/evaluation-history.types';
 
@@ -31,15 +31,18 @@ export class ClaudeManagerSummaryService {
   async synthesizeCharacteristics(managers: ManagerRunNotes[]): Promise<ManagerCharacteristic[]> {
     if (managers.length === 0) return [];
 
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      // 4000 wasn't enough with ~14-19 managers and detailed notes (2026-09-16 recovery run —
-      // came back with several managers silently missing from the array, stop_reason max_tokens).
-      max_tokens: 8192,
-      tools: [this.buildTool()],
-      tool_choice: { type: 'tool', name: CHARACTERISTICS_TOOL_NAME },
-      messages: [{ role: 'user', content: this.buildPrompt(managers) }],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        // 4000 wasn't enough with ~14-19 managers and detailed notes (2026-09-16 recovery run —
+        // came back with several managers silently missing from the array, stop_reason max_tokens).
+        max_tokens: 8192,
+        tools: [this.buildTool()],
+        tool_choice: { type: 'tool', name: CHARACTERISTICS_TOOL_NAME },
+        messages: [{ role: 'user', content: this.buildPrompt(managers) }],
+      }),
+      'ClaudeManagerSummaryService.synthesizeCharacteristics',
+    );
 
     return this.extractResult(response);
   }

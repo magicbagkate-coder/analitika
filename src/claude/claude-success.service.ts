@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 import { collectManagerNames, describeManagerRoles, describeManagersInline } from './manager-context';
 import { formatTranscript, toKyivTime } from './transcript-formatter';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
@@ -31,23 +31,26 @@ export class ClaudeSuccessService {
   async analyzeSuccessFactors(messages: ChatMessage[], clientName: string): Promise<SuccessFactorsResult> {
     const transcript = formatTranscript(messages);
     const managerNames = collectManagerNames(messages);
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      // Same headroom reasoning as ClaudeService.evaluateChat (2026-09-15 incident) — extractResult
-      // now throws on an incomplete response instead of risking a malformed value downstream.
-      max_tokens: 1600,
-      tools: [this.buildSuccessTool()],
-      tool_choice: { type: 'tool', name: SUCCESS_TOOL_NAME },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: this.buildStaticInstructions(), cache_control: { type: 'ephemeral' } },
-            { type: 'text', text: this.buildDynamicContext(clientName, managerNames, transcript) },
-          ],
-        },
-      ],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        // Same headroom reasoning as ClaudeService.evaluateChat (2026-09-15 incident) — extractResult
+        // now throws on an incomplete response instead of risking a malformed value downstream.
+        max_tokens: 1600,
+        tools: [this.buildSuccessTool()],
+        tool_choice: { type: 'tool', name: SUCCESS_TOOL_NAME },
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: this.buildStaticInstructions(), cache_control: { type: 'ephemeral' } },
+              { type: 'text', text: this.buildDynamicContext(clientName, managerNames, transcript) },
+            ],
+          },
+        ],
+      }),
+      'ClaudeSuccessService.analyzeSuccessFactors',
+    );
 
     return this.extractResult(response);
   }
@@ -63,13 +66,16 @@ export class ClaudeSuccessService {
   async synthesizeSuccessPatterns(outcomes: SuccessPatternInput[]): Promise<string> {
     if (outcomes.length === 0) return '';
 
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      max_tokens: 4000,
-      tools: [this.buildSuccessPatternsTool()],
-      tool_choice: { type: 'tool', name: SUCCESS_PATTERNS_TOOL_NAME },
-      messages: [{ role: 'user', content: this.buildSuccessPatternsPrompt(outcomes) }],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        max_tokens: 4000,
+        tools: [this.buildSuccessPatternsTool()],
+        tool_choice: { type: 'tool', name: SUCCESS_PATTERNS_TOOL_NAME },
+        messages: [{ role: 'user', content: this.buildSuccessPatternsPrompt(outcomes) }],
+      }),
+      'ClaudeSuccessService.synthesizeSuccessPatterns',
+    );
 
     return this.extractPatterns(response);
   }

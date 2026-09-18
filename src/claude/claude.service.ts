@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 import { collectManagerNames, describeManagerRoles } from './manager-context';
 import { formatTranscript, toKyivTime } from './transcript-formatter';
 import type { ChatEvaluationResult } from '../evaluation/evaluation.types';
@@ -21,25 +21,28 @@ export class ClaudeService {
   async evaluateChat(messages: ChatMessage[], clientName: string): Promise<ChatEvaluationResult> {
     const transcript = formatTranscript(messages);
     const managerNames = collectManagerNames(messages);
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      // Bumped from 1200 (2026-09-15 incident) — thinking can eat the budget before every field is
-      // written, and extractEvaluation now throws on any missing field rather than silently
-      // fabricating a score, so a too-tight budget here means a real chat gets skipped this run.
-      max_tokens: 2000,
-      tools: [this.buildEvaluationTool()],
-      tool_choice: { type: 'tool', name: EVALUATION_TOOL_NAME },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            // Identical on every call — cached so we only pay full price for it once a day.
-            { type: 'text', text: this.buildStaticInstructions(), cache_control: { type: 'ephemeral' } },
-            { type: 'text', text: this.buildDynamicContext(clientName, managerNames, transcript) },
-          ],
-        },
-      ],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        // Bumped from 1200 (2026-09-15 incident) — thinking can eat the budget before every field is
+        // written, and extractEvaluation now throws on any missing field rather than silently
+        // fabricating a score, so a too-tight budget here means a real chat gets skipped this run.
+        max_tokens: 2000,
+        tools: [this.buildEvaluationTool()],
+        tool_choice: { type: 'tool', name: EVALUATION_TOOL_NAME },
+        messages: [
+          {
+            role: 'user',
+            content: [
+              // Identical on every call — cached so we only pay full price for it once a day.
+              { type: 'text', text: this.buildStaticInstructions(), cache_control: { type: 'ephemeral' } },
+              { type: 'text', text: this.buildDynamicContext(clientName, managerNames, transcript) },
+            ],
+          },
+        ],
+      }),
+      'ClaudeService.evaluateChat',
+    );
 
     return this.extractEvaluation(response);
   }

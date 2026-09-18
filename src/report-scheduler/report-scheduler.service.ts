@@ -78,6 +78,9 @@ export class ReportSchedulerService implements OnModuleInit {
         this.telegramService,
         this.logger,
       );
+      const elapsedMinutes = Math.round((Date.now() - runStartedAt.getTime()) / 60_000);
+      this.logger.log(`Report run finished cleanly, started ${runStartedAt.toISOString()}, took ${elapsedMinutes} min`);
+      await this.trySend(`✅<b>Отчёт полностью сформирован</b> (${elapsedMinutes} мин).`);
     } finally {
       clearInterval(progressTimer);
       this.reportRunStatusService.finish();

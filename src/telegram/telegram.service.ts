@@ -4,7 +4,10 @@ import axios from 'axios';
 import { firstValueFrom } from 'rxjs';
 import { AppConfigService } from '../config/app-config.service';
 
-const MIN_INTERVAL_MS = 2500;
+// Telegram's own documented group limit is ~20 messages/minute; 2500ms (24/min) was above that and
+// caused frequent 429s during a big run (2026-09-18 — many "rate limit hit" retries in one report,
+// each costing 30+s). 3100ms keeps sustained sends under 20/min so retries become the exception.
+const MIN_INTERVAL_MS = 3100;
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT_MS = 30_000;
 

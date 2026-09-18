@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 
 const RECURRING_ISSUES_TOOL_NAME = 'submit_recurring_issues';
 
@@ -28,14 +28,17 @@ export class ClaudeTrendsService {
   async synthesizeRecurringIssues(managers: ManagerWeeklyNotes[]): Promise<string> {
     if (managers.length === 0) return '';
 
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      // Same headroom fix as ClaudeSynthesisService — see its comment (2026-09-15 incident).
-      max_tokens: 4000,
-      tools: [this.buildTool()],
-      tool_choice: { type: 'tool', name: RECURRING_ISSUES_TOOL_NAME },
-      messages: [{ role: 'user', content: this.buildPrompt(managers) }],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        // Same headroom fix as ClaudeSynthesisService — see its comment (2026-09-15 incident).
+        max_tokens: 4000,
+        tools: [this.buildTool()],
+        tool_choice: { type: 'tool', name: RECURRING_ISSUES_TOOL_NAME },
+        messages: [{ role: 'user', content: this.buildPrompt(managers) }],
+      }),
+      'ClaudeTrendsService.synthesizeRecurringIssues',
+    );
 
     return this.extractResult(response);
   }

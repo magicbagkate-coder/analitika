@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 import { describeManagersInline } from './manager-context';
 import { formatTranscript } from './transcript-formatter';
 import type { PatternSynthesisInput } from '../evaluation/evaluation.types';
@@ -31,16 +31,19 @@ export class ClaudeSynthesisService {
   async synthesizePatterns(outcomes: PatternSynthesisInput[]): Promise<PatternSynthesisDraft> {
     if (outcomes.length === 0) return { patterns: '', criticalCandidates: [] };
 
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      // 2000 wasn't enough for a large batch (48 chats, 2026-09-15 recovery) — thinking + a full
-      // multi-sentence patterns write-up burned the whole budget before finishing, returning an
-      // empty tool input with stop_reason "max_tokens". 4000 leaves real headroom either way.
-      max_tokens: 4000,
-      tools: [this.buildSynthesisTool()],
-      tool_choice: { type: 'tool', name: SYNTHESIS_TOOL_NAME },
-      messages: [{ role: 'user', content: this.buildSynthesisPrompt(outcomes) }],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        // 2000 wasn't enough for a large batch (48 chats, 2026-09-15 recovery) — thinking + a full
+        // multi-sentence patterns write-up burned the whole budget before finishing, returning an
+        // empty tool input with stop_reason "max_tokens". 4000 leaves real headroom either way.
+        max_tokens: 4000,
+        tools: [this.buildSynthesisTool()],
+        tool_choice: { type: 'tool', name: SYNTHESIS_TOOL_NAME },
+        messages: [{ role: 'user', content: this.buildSynthesisPrompt(outcomes) }],
+      }),
+      'ClaudeSynthesisService.synthesizePatterns',
+    );
 
     return this.extractSynthesis(response);
   }
@@ -54,14 +57,17 @@ export class ClaudeSynthesisService {
    */
   async verifyCriticalChat(clientName: string, messages: ChatMessage[], guaranteedConflict = false): Promise<string> {
     const transcript = formatTranscript(messages);
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      // Bumped from 800 (2026-09-15 incident, same headroom reasoning as the batch synthesis calls).
-      max_tokens: 1200,
-      tools: [this.buildVerificationTool()],
-      tool_choice: { type: 'tool', name: VERIFICATION_TOOL_NAME },
-      messages: [{ role: 'user', content: this.buildVerificationPrompt(clientName, transcript, guaranteedConflict) }],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        // Bumped from 800 (2026-09-15 incident, same headroom reasoning as the batch synthesis calls).
+        max_tokens: 1200,
+        tools: [this.buildVerificationTool()],
+        tool_choice: { type: 'tool', name: VERIFICATION_TOOL_NAME },
+        messages: [{ role: 'user', content: this.buildVerificationPrompt(clientName, transcript, guaranteedConflict) }],
+      }),
+      'ClaudeSynthesisService.verifyCriticalChat',
+    );
 
     return this.extractVerification(response);
   }
@@ -78,13 +84,16 @@ export class ClaudeSynthesisService {
    */
   async verifyPossibleConflict(clientName: string, messages: ChatMessage[]): Promise<string> {
     const transcript = formatTranscript(messages);
-    const response = await this.client.messages.create({
-      model: this.appConfig.getAnthropicModel(),
-      max_tokens: 1200,
-      tools: [this.buildVerificationTool()],
-      tool_choice: { type: 'tool', name: VERIFICATION_TOOL_NAME },
-      messages: [{ role: 'user', content: this.buildPossibleConflictPrompt(clientName, transcript) }],
-    });
+    const response = await withHardTimeout(
+      this.client.messages.create({
+        model: this.appConfig.getAnthropicModel(),
+        max_tokens: 1200,
+        tools: [this.buildVerificationTool()],
+        tool_choice: { type: 'tool', name: VERIFICATION_TOOL_NAME },
+        messages: [{ role: 'user', content: this.buildPossibleConflictPrompt(clientName, transcript) }],
+      }),
+      'ClaudeSynthesisService.verifyPossibleConflict',
+    );
 
     return this.extractVerification(response);
   }

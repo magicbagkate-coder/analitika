@@ -27,7 +27,10 @@ export class ManagerCharacteristicsService {
 
   async runSummary(since: Date): Promise<void> {
     const rows = await this.evaluationHistoryService.findSince(since);
-    if (rows.length === 0) return;
+    if (rows.length === 0) {
+      this.logger.log(`No evaluation_history rows since ${since.toISOString()} — nothing to summarize this run.`);
+      return;
+    }
 
     const managers = this.groupByManager(rows);
     const characteristics = await this.trySynthesize(managers);

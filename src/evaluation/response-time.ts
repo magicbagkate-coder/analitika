@@ -29,8 +29,14 @@ export function calculateResponseTimes(messages: ChatMessage[]): ResponseTimeSta
       continue;
     }
     if (kind === 'manager' && pendingClientMessageAt) {
+      // >= 0, not > 0: a reply inside the same minute is real, valuable data (the fastest possible
+      // service), not noise — dropping it used to hide exactly the managers doing best (found
+      // 2026-09-18 on a chat with 5-20 second replies). Sitniks' own timestamps also aren't always
+      // strictly monotonic between a client's and a manager's message a moment apart (different
+      // clocks), which briefly went negative and got zeroed by openMinutesBetween — that's still a
+      // real near-instant reply, not invalid data.
       const minutes = Math.round(openMinutesBetween(pendingClientMessageAt, new Date(message.createdAt)));
-      if (minutes > 0) intervalsMinutes.push(minutes);
+      if (minutes >= 0) intervalsMinutes.push(minutes);
       pendingClientMessageAt = null;
     }
   }
