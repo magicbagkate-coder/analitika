@@ -31,14 +31,14 @@ describe('EvaluationService', () => {
   let notesService: { createNote: jest.Mock };
   let updateService: { updateChat: jest.Mock };
   let historyService: { tryRecord: jest.Mock };
-  let replyTimesService: { tryRecord: jest.Mock };
+  let replyTimesService: { queue: jest.Mock };
 
   beforeEach(async () => {
     claudeService = { evaluateChat: jest.fn().mockResolvedValue(evaluationResult()) };
     notesService = { createNote: jest.fn().mockResolvedValue(undefined) };
     updateService = { updateChat: jest.fn().mockResolvedValue(undefined) };
     historyService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
-    replyTimesService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
+    replyTimesService = { queue: jest.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -116,7 +116,7 @@ describe('EvaluationService', () => {
       messages: baseMessages,
     });
 
-    expect(replyTimesService.tryRecord).toHaveBeenCalledWith({
+    expect(replyTimesService.queue).toHaveBeenCalledWith({
       chatId: 'abc',
       source: 'product_selection',
       replies: [expect.objectContaining({ messageId: '2', managerName: 'Аня', minutes: 5 })],

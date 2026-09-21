@@ -3,6 +3,7 @@ import { EvaluationHistoryService } from '../evaluation-history/evaluation-histo
 import { getKyivHourMinute } from '../kyiv-time';
 import { ManagerCharacteristicsService } from '../manager-characteristics/manager-characteristics.service';
 import { OrderSuccessAnalysisService } from '../order-success-analysis/order-success-analysis.service';
+import { ReplyTimesService } from '../reply-times/reply-times.service';
 import { ReportRunStatusService } from '../report-run-status/report-run-status.service';
 import { runWithWatchdog } from '../report-watchdog';
 import { REPORT_TIMES } from '../status-report/status-report.constants';
@@ -38,6 +39,7 @@ export class ReportSchedulerService implements OnModuleInit {
     private readonly telegramService: TelegramService,
     private readonly reportRunStatusService: ReportRunStatusService,
     private readonly evaluationHistoryService: EvaluationHistoryService,
+    private readonly replyTimesService: ReplyTimesService,
   ) {}
 
   onModuleInit(): void {
@@ -84,6 +86,9 @@ export class ReportSchedulerService implements OnModuleInit {
     } finally {
       clearInterval(progressTimer);
       this.reportRunStatusService.finish();
+      // Owner's instruction (2026-09-21): reply times are saved only after the report is out, and
+      // not awaited — flush() never throws, and a stalled DB must never hold up anything here.
+      void this.replyTimesService.flush();
     }
   }
 

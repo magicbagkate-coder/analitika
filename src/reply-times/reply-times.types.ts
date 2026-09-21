@@ -6,3 +6,13 @@ export type RecordRepliesParams = {
   source: EvaluationSource;
   replies: ReplyInterval[];
 };
+
+export type ReplyTimeRow = {
+  chatId: string;
+  messageId: string;
+  managerName: string;
+  source: EvaluationSource;
+  clientMessageAt: Date;
+  repliedAt: Date;
+  minutes: number;
+};

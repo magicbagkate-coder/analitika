@@ -111,7 +111,7 @@ export class OrderSuccessAnalysisService {
       note: result.successFactors,
       medianResponseMinutes: responseTimes.medianMinutes,
     });
-    await this.replyTimesService.tryRecord({ chatId: chat.id, source: 'order_created', replies });
+    this.replyTimesService.queue({ chatId: chat.id, source: 'order_created', replies });
 
     return {
       chatId: chat.id,

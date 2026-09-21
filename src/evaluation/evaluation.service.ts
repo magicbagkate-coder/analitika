@@ -42,7 +42,7 @@ export class EvaluationService {
       note: evaluation.mistakes,
       medianResponseMinutes: responseTimes.medianMinutes,
     });
-    await this.replyTimesService.tryRecord({ chatId: params.chatId, source: 'product_selection', replies });
+    this.replyTimesService.queue({ chatId: params.chatId, source: 'product_selection', replies });
 
     this.logger.log(`Evaluated chat ${params.chatId}: ${evaluation.score}/5`);
     return { ...evaluation, responseTimes };

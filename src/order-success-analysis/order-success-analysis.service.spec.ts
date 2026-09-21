@@ -26,7 +26,7 @@ describe('OrderSuccessAnalysisService', () => {
   let claudeSuccessService: { analyzeSuccessFactors: jest.Mock; synthesizeSuccessPatterns: jest.Mock };
   let telegramService: { sendMessage: jest.Mock };
   let historyService: { tryRecord: jest.Mock };
-  let replyTimesService: { tryRecord: jest.Mock };
+  let replyTimesService: { queue: jest.Mock };
 
   beforeEach(async () => {
     chatListService = { listChats: jest.fn().mockResolvedValue({ data: [], count: 0 }) };
@@ -38,7 +38,7 @@ describe('OrderSuccessAnalysisService', () => {
     };
     telegramService = { sendMessage: jest.fn().mockResolvedValue(undefined) };
     historyService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
-    replyTimesService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
+    replyTimesService = { queue: jest.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -102,7 +102,7 @@ describe('OrderSuccessAnalysisService', () => {
 
     await service.runAnalysis();
 
-    expect(replyTimesService.tryRecord).toHaveBeenCalledWith({
+    expect(replyTimesService.queue).toHaveBeenCalledWith({
       chatId: 'c1',
       source: 'order_created',
       replies: [expect.objectContaining({ messageId: 'm2', managerName: 'Аня', minutes: 3 })],

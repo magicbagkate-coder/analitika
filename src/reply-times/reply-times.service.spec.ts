@@ -34,30 +34,64 @@ describe('ReplyTimesService', () => {
     service = module.get(ReplyTimesService);
   });
 
-  it('writes one row per reply, carrying the chat, source and who answered', async () => {
-    await service.tryRecord({ chatId: 'c1', source: 'product_selection', replies: [reply('m1', 'Аня', 5), reply('m2', 'Оля', 12.5)] });
-
-    expect(builder.values).toHaveBeenCalledWith([
-      expect.objectContaining({ chatId: 'c1', messageId: 'm1', managerName: 'Аня', source: 'product_selection', minutes: 5 }),
-      expect.objectContaining({ chatId: 'c1', messageId: 'm2', managerName: 'Оля', source: 'product_selection', minutes: 12.5 }),
-    ]);
-  });
-
-  it('ignores a reply already stored, instead of failing or duplicating it (each run re-reads a 72h window)', async () => {
-    await service.tryRecord({ chatId: 'c1', source: 'order_created', replies: [reply('m1', 'Аня', 5)] });
-
-    expect(builder.orIgnore).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not touch the database when there is nothing to record', async () => {
-    await service.tryRecord({ chatId: 'c1', source: 'product_selection', replies: [] });
+  it('does not touch the database while replies are only queued (the report is still being built)', () => {
+    service.queue({ chatId: 'c1', source: 'product_selection', replies: [reply('m1', 'Аня', 5)] });
 
     expect(repository.createQueryBuilder).not.toHaveBeenCalled();
   });
 
-  it('never throws when the insert fails, so the evaluation that already succeeded is not broken', async () => {
-    builder.execute.mockRejectedValue(new Error('connection refused'));
+  it('writes every queued reply on flush, carrying the chat, source and who answered', async () => {
+    service.queue({ chatId: 'c1', source: 'product_selection', replies: [reply('m1', 'Аня', 5)] });
+    service.queue({ chatId: 'c2', source: 'order_created', replies: [reply('m2', 'Оля', 12.5)] });
 
-    await expect(service.tryRecord({ chatId: 'c1', source: 'product_selection', replies: [reply('m1', 'Аня', 5)] })).resolves.toBeUndefined();
+    await service.flush();
+
+    expect(builder.values).toHaveBeenCalledTimes(1);
+    expect(builder.values).toHaveBeenCalledWith([
+      expect.objectContaining({ chatId: 'c1', messageId: 'm1', managerName: 'Аня', source: 'product_selection', minutes: 5 }),
+      expect.objectContaining({ chatId: 'c2', messageId: 'm2', managerName: 'Оля', source: 'order_created', minutes: 12.5 }),
+    ]);
+  });
+
+  it('ignores a reply already stored, instead of failing or duplicating it (each run re-reads a 72h window)', async () => {
+    service.queue({ chatId: 'c1', source: 'order_created', replies: [reply('m1', 'Аня', 5)] });
+
+    await service.flush();
+
+    expect(builder.orIgnore).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not touch the database when nothing was queued', async () => {
+    await service.flush();
+
+    expect(repository.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('writes a queued reply only once, even if flush is called twice', async () => {
+    service.queue({ chatId: 'c1', source: 'product_selection', replies: [reply('m1', 'Аня', 5)] });
+
+    await service.flush();
+    await service.flush();
+
+    expect(builder.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('splits a large batch into several inserts, staying under the database parameter limit', async () => {
+    const replies = Array.from({ length: 1200 }, (_, index) => reply(`m${index}`, 'Аня', 1));
+    service.queue({ chatId: 'c1', source: 'product_selection', replies });
+
+    await service.flush();
+
+    expect(builder.execute).toHaveBeenCalledTimes(3);
+  });
+
+  it('never throws when an insert fails, and still tries the remaining batches', async () => {
+    const replies = Array.from({ length: 600 }, (_, index) => reply(`m${index}`, 'Аня', 1));
+    service.queue({ chatId: 'c1', source: 'product_selection', replies });
+    builder.execute.mockRejectedValueOnce(new Error('connection refused'));
+
+    await expect(service.flush()).resolves.toBeUndefined();
+
+    expect(builder.execute).toHaveBeenCalledTimes(2);
   });
 });
