@@ -14,6 +14,8 @@ export type ChatMessage = {
   createdAt: string;
   /** Whether the CLIENT has opened/viewed this message yet — confirmed against a live response. */
   isViewedByUser: boolean;
+  /** "text", "image" or "video" seen live — photo/video messages arrive with an empty `text`. */
+  messageType?: string;
 };
 
 export type ListChatMessagesResponse = {

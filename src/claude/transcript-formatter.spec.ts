@@ -47,6 +47,39 @@ describe('formatTranscript', () => {
   });
 });
 
+describe('formatTranscript — photos and videos', () => {
+  function mediaMessage(id: string, messageType: string | undefined, text = ''): ChatMessage {
+    return { id, sentBy: 'acct1', managerName: 'Аня', text, createdAt: '2026-09-18T10:00:00.000Z', isViewedByUser: true, messageType };
+  }
+
+  it('shows an image message with empty text as [фото], not a blank line (2026-09-21 bug)', () => {
+    expect(formatTranscript([mediaMessage('1', 'image')])).toContain('Аня: [фото]');
+  });
+
+  it('shows a video message as [відео]', () => {
+    expect(formatTranscript([mediaMessage('1', 'video')])).toContain('Аня: [відео]');
+  });
+
+  it('keeps a caption next to the marker', () => {
+    expect(formatTranscript([mediaMessage('1', 'image', 'Ось цей колір')])).toContain('Аня: [фото] Ось цей колір');
+  });
+
+  it('renders several photos in a row as separate marked lines, so a package of colours reads as photos, not blanks', () => {
+    const lines = formatTranscript([mediaMessage('1', 'image'), mediaMessage('2', 'image'), mediaMessage('3', 'video')]).split('\n');
+    expect(lines.map((line) => line.replace(/^\[[^\]]+\] Аня: /, ''))).toEqual(['[фото]', '[фото]', '[відео]']);
+  });
+
+  it('labels an unrecognised non-text type as a generic attachment only when it has no text', () => {
+    expect(formatTranscript([mediaMessage('1', 'sticker')])).toContain('Аня: [вкладення]');
+    expect(formatTranscript([mediaMessage('1', 'sticker', 'привіт')])).not.toContain('[вкладення]');
+  });
+
+  it('leaves an ordinary text message untouched, with or without a messageType', () => {
+    expect(formatTranscript([mediaMessage('1', 'text', 'Вітаю')])).toContain('Аня: Вітаю');
+    expect(formatTranscript([mediaMessage('1', undefined, 'Вітаю')])).toContain('Аня: Вітаю');
+  });
+});
+
 describe('toKyivTime', () => {
   it('formats a UTC ISO string as DD.MM.YYYY, HH:mm in Kyiv time', () => {
     expect(toKyivTime('2026-09-18T12:45:00.000Z')).toBe('18.09.2026, 15:45');

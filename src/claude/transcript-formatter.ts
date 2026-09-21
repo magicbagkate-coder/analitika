@@ -4,6 +4,15 @@ import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
 const BOT_SPEAKER_LABEL = 'АВТОМАТИЧНИЙ БОТ Instagram';
 
+// Sitniks sends a photo/video as its own message with EMPTY text (messageType image/video). Without
+// a marker those read as blank lines, and Claude reported a manager for "spamming empty messages"
+// when she was sending the colour photos exactly as the rules require (2026-09-21).
+const MEDIA_LABELS = new Map([
+  ['image', '[фото]'],
+  ['video', '[відео]'],
+]);
+const UNKNOWN_ATTACHMENT_LABEL = '[вкладення]';
+
 /**
  * "[DD.MM.YYYY HH:mm] manager-or-client-or-bot: text", one line per message, Kyiv local time.
  *
@@ -21,8 +30,21 @@ export function formatTranscript(messages: ChatMessage[]): string {
   const accountSentBy = messages.find((message) => message.managerName)?.sentBy;
 
   return messages
-    .map((message) => `[${toKyivTime(message.createdAt)}] ${speakerLabel(message, accountSentBy)}: ${message.text}${unreadMarker(message)}`)
+    .map((message) => `[${toKyivTime(message.createdAt)}] ${speakerLabel(message, accountSentBy)}: ${messageContent(message)}${unreadMarker(message)}`)
     .join('\n');
+}
+
+function messageContent(message: ChatMessage): string {
+  return [mediaLabel(message), message.text].filter((part) => part.length > 0).join(' ');
+}
+
+/** Known media types are always labelled; an unrecognised non-text type only when it has no text to show. */
+function mediaLabel(message: ChatMessage): string {
+  const knownLabel = message.messageType ? MEDIA_LABELS.get(message.messageType) : undefined;
+  if (knownLabel) return knownLabel;
+
+  const isUnknownNonText = message.messageType !== undefined && message.messageType !== 'text';
+  return isUnknownNonText && message.text.trim().length === 0 ? UNKNOWN_ATTACHMENT_LABEL : '';
 }
 
 function speakerLabel(message: ChatMessage, accountSentBy: string | undefined): string {
