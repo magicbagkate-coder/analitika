@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ClaudeService } from '../claude/claude.service';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
+import { ReplyTimesService } from '../reply-times/reply-times.service';
 import { SitniksChatNotesService } from '../sitniks-chat-notes/sitniks-chat-notes.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
 import { EvaluationService } from './evaluation.service';
@@ -30,12 +31,14 @@ describe('EvaluationService', () => {
   let notesService: { createNote: jest.Mock };
   let updateService: { updateChat: jest.Mock };
   let historyService: { tryRecord: jest.Mock };
+  let replyTimesService: { tryRecord: jest.Mock };
 
   beforeEach(async () => {
     claudeService = { evaluateChat: jest.fn().mockResolvedValue(evaluationResult()) };
     notesService = { createNote: jest.fn().mockResolvedValue(undefined) };
     updateService = { updateChat: jest.fn().mockResolvedValue(undefined) };
     historyService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
+    replyTimesService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -44,6 +47,7 @@ describe('EvaluationService', () => {
         { provide: SitniksChatNotesService, useValue: notesService },
         { provide: SitniksChatUpdateService, useValue: updateService },
         { provide: EvaluationHistoryService, useValue: historyService },
+        { provide: ReplyTimesService, useValue: replyTimesService },
       ],
     }).compile();
     service = module.get(EvaluationService);
@@ -100,6 +104,22 @@ describe('EvaluationService', () => {
       source: 'product_selection',
       note: 'Немає',
       medianResponseMinutes: 5,
+    });
+  });
+
+  it('records each manager reply separately, with who gave it, so speed can be read per manager', async () => {
+    await service.evaluateAndPublish({
+      chatId: 'abc',
+      existingTags: [],
+      clientName: 'test_client',
+      managerNames: ['Аня'],
+      messages: baseMessages,
+    });
+
+    expect(replyTimesService.tryRecord).toHaveBeenCalledWith({
+      chatId: 'abc',
+      source: 'product_selection',
+      replies: [expect.objectContaining({ messageId: '2', managerName: 'Аня', minutes: 5 })],
     });
   });
 

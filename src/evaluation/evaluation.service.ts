@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeService } from '../claude/claude.service';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
+import { ReplyTimesService } from '../reply-times/reply-times.service';
 import { SitniksChatNotesService } from '../sitniks-chat-notes/sitniks-chat-notes.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
 import { SCORE_TAG_PREFIX, buildLastEvaluatedMessageTag, withoutTrackingTags } from './evaluation.constants';
-import { calculateResponseTimes } from './response-time';
+import { calculateReplyIntervals, toResponseTimeStats } from './response-time';
 import type { ChatEvaluationOutcome, EvaluateChatParams } from './evaluation.types';
 
 /** Orchestrates one chat: Claude evaluation → tag + note written back to Sitniks, plus history for trends. */
@@ -17,6 +18,7 @@ export class EvaluationService {
     private readonly sitniksChatNotesService: SitniksChatNotesService,
     private readonly sitniksChatUpdateService: SitniksChatUpdateService,
     private readonly evaluationHistoryService: EvaluationHistoryService,
+    private readonly replyTimesService: ReplyTimesService,
   ) {}
 
   async evaluateAndPublish(params: EvaluateChatParams): Promise<ChatEvaluationOutcome> {
@@ -25,7 +27,8 @@ export class EvaluationService {
     const latestMessageId = params.messages[0]?.id;
     const tags = this.replaceScoreTag(params.existingTags, evaluation.score, latestMessageId);
     // Pure arithmetic on timestamps already in `messages` — no Claude call, no extra API cost.
-    const responseTimes = calculateResponseTimes(params.messages);
+    const replies = calculateReplyIntervals(params.messages);
+    const responseTimes = toResponseTimeStats(replies);
 
     await this.sitniksChatUpdateService.updateChat({ chatId: params.chatId, tags });
     // Only the recommendation goes to Sitniks — the rest is Telegram-only (see status-report.service.ts).
@@ -39,6 +42,7 @@ export class EvaluationService {
       note: evaluation.mistakes,
       medianResponseMinutes: responseTimes.medianMinutes,
     });
+    await this.replyTimesService.tryRecord({ chatId: params.chatId, source: 'product_selection', replies });
 
     this.logger.log(`Evaluated chat ${params.chatId}: ${evaluation.score}/5`);
     return { ...evaluation, responseTimes };

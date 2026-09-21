@@ -1,10 +1,20 @@
 import { startOfKyivDayUtc } from '../kyiv-time';
+import { getCanonicalManagerName } from './manager-roles.constants';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
 const CLOSED_WINDOW_MINUTES = 8 * 60; // store is closed 00:00-08:00 Kyiv
 const DAY_MINUTES = 24 * 60;
 
 export type ResponseTimeStats = { intervalsMinutes: number[]; medianMinutes: number | null };
+
+/** One manager reply to a waiting client message — the unit stored per manager in reply_times. */
+export type ReplyInterval = {
+  messageId: string;
+  managerName: string;
+  clientMessageAt: Date;
+  repliedAt: Date;
+  minutes: number;
+};
 
 const EMPTY_STATS: ResponseTimeStats = { intervalsMinutes: [], medianMinutes: null };
 
@@ -16,10 +26,15 @@ const EMPTY_STATS: ResponseTimeStats = { intervalsMinutes: [], medianMinutes: nu
  * since it isn't staff responding and the client didn't have to wait for it.
  */
 export function calculateResponseTimes(messages: ChatMessage[]): ResponseTimeStats {
+  return toResponseTimeStats(calculateReplyIntervals(messages));
+}
+
+/** Each reply keeps WHO gave it — the per-chat median alone can't say whose speed it was. */
+export function calculateReplyIntervals(messages: ChatMessage[]): ReplyInterval[] {
   const chronological = [...messages].reverse(); // Sitniks gives newest-first
   const accountSentBy = chronological.find((message) => message.managerName)?.sentBy;
 
-  const intervalsMinutes: number[] = [];
+  const intervals: ReplyInterval[] = [];
   let pendingClientMessageAt: Date | null = null;
 
   for (const message of chronological) {
@@ -28,19 +43,29 @@ export function calculateResponseTimes(messages: ChatMessage[]): ResponseTimeSta
       pendingClientMessageAt = new Date(message.createdAt);
       continue;
     }
-    if (kind === 'manager' && pendingClientMessageAt) {
-      // >= 0, not > 0: a reply inside the same minute is real, valuable data (the fastest possible
-      // service), not noise — dropping it used to hide exactly the managers doing best (found
-      // 2026-09-18 on a chat with 5-20 second replies). Sitniks' own timestamps also aren't always
-      // strictly monotonic between a client's and a manager's message a moment apart (different
-      // clocks), which briefly went negative and got zeroed by openMinutesBetween — that's still a
-      // real near-instant reply, not invalid data.
-      const minutes = Math.round(openMinutesBetween(pendingClientMessageAt, new Date(message.createdAt)));
-      if (minutes >= 0) intervalsMinutes.push(minutes);
+    if (kind === 'manager' && pendingClientMessageAt && message.managerName) {
+      // A reply inside the same minute is real, valuable data (the fastest possible service), not
+      // noise — dropping it used to hide exactly the managers doing best (found 2026-09-18 on a chat
+      // with 5-20 second replies). Sitniks' own timestamps also aren't always strictly monotonic
+      // between a client's and a manager's message a moment apart (different clocks), which briefly
+      // goes negative and gets zeroed by openMinutesBetween — still a real near-instant reply.
+      const repliedAt = new Date(message.createdAt);
+      intervals.push({
+        messageId: message.id,
+        managerName: getCanonicalManagerName(message.managerName),
+        clientMessageAt: pendingClientMessageAt,
+        repliedAt,
+        minutes: openMinutesBetween(pendingClientMessageAt, repliedAt),
+      });
       pendingClientMessageAt = null;
     }
   }
 
+  return intervals;
+}
+
+export function toResponseTimeStats(intervals: ReplyInterval[]): ResponseTimeStats {
+  const intervalsMinutes = intervals.map((interval) => Math.round(interval.minutes));
   return intervalsMinutes.length > 0 ? { intervalsMinutes, medianMinutes: median(intervalsMinutes) } : EMPTY_STATS;
 }
 

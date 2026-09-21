@@ -2,9 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeSuccessService } from '../claude/claude-success.service';
 import { collectManagerNames } from '../claude/manager-context';
 import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
-import { calculateResponseTimes } from '../evaluation/response-time';
+import { calculateReplyIntervals, toResponseTimeStats } from '../evaluation/response-time';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute } from '../kyiv-time';
+import { ReplyTimesService } from '../reply-times/reply-times.service';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
@@ -37,6 +38,7 @@ export class OrderSuccessAnalysisService {
     private readonly claudeSuccessService: ClaudeSuccessService,
     private readonly telegramService: TelegramService,
     private readonly evaluationHistoryService: EvaluationHistoryService,
+    private readonly replyTimesService: ReplyTimesService,
   ) {}
 
   async runAnalysis(): Promise<void> {
@@ -96,7 +98,8 @@ export class OrderSuccessAnalysisService {
     const managerNames = collectManagerNames(recentMessages);
     const result = await this.claudeSuccessService.analyzeSuccessFactors(recentMessages, clientName);
     const score = result.hadUpsell ? SCORE_WITH_UPSELL : SCORE_WITHOUT_UPSELL;
-    const responseTimes = calculateResponseTimes(recentMessages);
+    const replies = calculateReplyIntervals(recentMessages);
+    const responseTimes = toResponseTimeStats(replies);
 
     await this.publish(chat, score, latestMessageId);
     await this.evaluationHistoryService.tryRecord({
@@ -108,6 +111,7 @@ export class OrderSuccessAnalysisService {
       note: result.successFactors,
       medianResponseMinutes: responseTimes.medianMinutes,
     });
+    await this.replyTimesService.tryRecord({ chatId: chat.id, source: 'order_created', replies });
 
     return {
       chatId: chat.id,

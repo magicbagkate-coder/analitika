@@ -1,4 +1,4 @@
-import { calculateResponseTimes } from './response-time';
+import { calculateReplyIntervals, calculateResponseTimes, toResponseTimeStats } from './response-time';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
 function kyiv(dateStr: string, h: number, m: number, s = 0): string {
@@ -95,5 +95,57 @@ describe('calculateResponseTimes', () => {
       msg('1', 'client', undefined, '2026-09-18', 10, 0),
     ];
     expect(calculateResponseTimes(messages)).toEqual({ intervalsMinutes: [4, 8], medianMinutes: 6 });
+  });
+});
+
+describe('calculateReplyIntervals', () => {
+  it('attributes each reply to the manager who gave it, by message id', () => {
+    const messages = [
+      msg('4', 'mgr2', 'Оля', '2026-09-18', 11, 8),
+      msg('3', 'client', undefined, '2026-09-18', 11, 0),
+      msg('2', 'mgr1', 'Аня', '2026-09-18', 10, 4),
+      msg('1', 'client', undefined, '2026-09-18', 10, 0),
+    ];
+
+    const replies = calculateReplyIntervals(messages);
+
+    expect(replies.map((reply) => [reply.messageId, reply.managerName, reply.minutes])).toEqual([
+      ['2', 'Аня', 4],
+      ['4', 'Оля', 8],
+    ]);
+  });
+
+  it('resolves a short-name alias to the canonical manager name, so one person is never split in two', () => {
+    const messages = [msg('2', 'mgr', 'Ольга', '2026-09-18', 10, 5), msg('1', 'client', undefined, '2026-09-18', 10, 0)];
+    expect(calculateReplyIntervals(messages)[0].managerName).toBe('Ольга Шульц');
+  });
+
+  it('keeps the exact instants of the wait, and fractional minutes', () => {
+    const messages = [msg('2', 'mgr', 'Аня', '2026-09-18', 10, 0, 30), msg('1', 'client', undefined, '2026-09-18', 10, 0, 0)];
+
+    const [reply] = calculateReplyIntervals(messages);
+
+    expect(reply.clientMessageAt.toISOString()).toBe(kyiv('2026-09-18', 10, 0, 0));
+    expect(reply.repliedAt.toISOString()).toBe(kyiv('2026-09-18', 10, 0, 30));
+    expect(reply.minutes).toBeCloseTo(0.5, 5);
+  });
+
+  it('returns nothing when no manager ever answered a client message', () => {
+    expect(calculateReplyIntervals([msg('1', 'client', undefined, '2026-09-18', 10, 0)])).toEqual([]);
+  });
+});
+
+describe('toResponseTimeStats', () => {
+  it('rounds each interval to whole minutes and takes the median', () => {
+    const stats = toResponseTimeStats([
+      { messageId: '1', managerName: 'Аня', clientMessageAt: new Date(0), repliedAt: new Date(0), minutes: 2.4 },
+      { messageId: '2', managerName: 'Аня', clientMessageAt: new Date(0), repliedAt: new Date(0), minutes: 9.6 },
+      { messageId: '3', managerName: 'Оля', clientMessageAt: new Date(0), repliedAt: new Date(0), minutes: 4.5 },
+    ]);
+    expect(stats).toEqual({ intervalsMinutes: [2, 10, 5], medianMinutes: 5 });
+  });
+
+  it('is empty for no intervals', () => {
+    expect(toResponseTimeStats([])).toEqual({ intervalsMinutes: [], medianMinutes: null });
   });
 });

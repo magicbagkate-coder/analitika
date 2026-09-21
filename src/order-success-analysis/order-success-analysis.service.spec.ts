@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ClaudeSuccessService } from '../claude/claude-success.service';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
+import { ReplyTimesService } from '../reply-times/reply-times.service';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatUpdateService } from '../sitniks-chat-update/sitniks-chat-update.service';
@@ -25,6 +26,7 @@ describe('OrderSuccessAnalysisService', () => {
   let claudeSuccessService: { analyzeSuccessFactors: jest.Mock; synthesizeSuccessPatterns: jest.Mock };
   let telegramService: { sendMessage: jest.Mock };
   let historyService: { tryRecord: jest.Mock };
+  let replyTimesService: { tryRecord: jest.Mock };
 
   beforeEach(async () => {
     chatListService = { listChats: jest.fn().mockResolvedValue({ data: [], count: 0 }) };
@@ -36,6 +38,7 @@ describe('OrderSuccessAnalysisService', () => {
     };
     telegramService = { sendMessage: jest.fn().mockResolvedValue(undefined) };
     historyService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
+    replyTimesService = { tryRecord: jest.fn().mockResolvedValue(undefined) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -46,9 +49,14 @@ describe('OrderSuccessAnalysisService', () => {
         { provide: ClaudeSuccessService, useValue: claudeSuccessService },
         { provide: TelegramService, useValue: telegramService },
         { provide: EvaluationHistoryService, useValue: historyService },
+        { provide: ReplyTimesService, useValue: replyTimesService },
       ],
     }).compile();
     service = module.get(OrderSuccessAnalysisService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('sends nothing at all to Telegram when there are no chats to analyze', async () => {
@@ -77,6 +85,28 @@ describe('OrderSuccessAnalysisService', () => {
     await service.runAnalysis();
 
     expect(historyService.tryRecord).toHaveBeenCalledWith(expect.objectContaining({ source: 'order_created' }));
+  });
+
+  it('records each manager reply per manager with source "order_created"', async () => {
+    // Pinned "now": the 72h analysis window and the closed-hours rule both depend on the clock, and
+    // a test that only passes at certain hours of the day is worse than none.
+    jest.spyOn(Date, 'now').mockReturnValue(new Date('2026-09-18T12:00:00.000Z').getTime());
+    chatListService.listChats.mockResolvedValue({ data: [chat('c1')], count: 1 });
+    chatMessagesService.listMessages.mockResolvedValue({
+      data: [
+        { id: 'm2', sentBy: 'acct', managerName: 'Аня', text: 'ok', createdAt: '2026-09-18T10:03:00.000Z', isViewedByUser: true },
+        { id: 'm1', sentBy: 'client', text: 'привіт', createdAt: '2026-09-18T10:00:00.000Z', isViewedByUser: true },
+      ],
+    });
+    claudeSuccessService.analyzeSuccessFactors.mockResolvedValue({ successFactors: 'ok', hadUpsell: false });
+
+    await service.runAnalysis();
+
+    expect(replyTimesService.tryRecord).toHaveBeenCalledWith({
+      chatId: 'c1',
+      source: 'order_created',
+      replies: [expect.objectContaining({ messageId: 'm2', managerName: 'Аня', minutes: 3 })],
+    });
   });
 
   it('skips a chat already analyzed against its current latest message', async () => {
