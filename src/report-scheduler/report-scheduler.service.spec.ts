@@ -176,11 +176,15 @@ describe('ReportSchedulerService.runBoth', () => {
       expect(replyTimesService.findSpeedByManager).not.toHaveBeenCalled();
     });
 
-    it('a failing speed query never breaks the run, it is only logged', async () => {
+    it('a failing speed query never breaks the run, but she gets a Telegram warning instead of silence', async () => {
       replyTimesService.findSpeedByManager.mockRejectedValue(new Error('db down'));
 
       await expect(service.runBoth()).resolves.toBeUndefined();
       await settle();
+
+      const texts = sentTexts();
+      expect(texts[texts.length - 1]).toContain('Не удалось сохранить/отправить скорость ответов за смену');
+      expect(texts[texts.length - 1]).toContain('db down');
 
       expect(sentTexts().some((text) => text.includes('Скорость ответа'))).toBe(false);
     });

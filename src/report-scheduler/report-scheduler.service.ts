@@ -106,7 +106,11 @@ export class ReportSchedulerService implements OnModuleInit {
       await this.replyTimesService.flush();
       if (params.sendShiftSpeed) await this.sendShiftSpeed(params.runStartedAt);
     } catch (error) {
-      this.logger.warn(`Could not save or report reply times: ${(error as Error).message}`);
+      const message = (error as Error).message;
+      this.logger.warn(`Could not save or report reply times: ${message}`);
+      // Owner's instruction (2026-09-22): a silent log line isn't enough — she shouldn't have to go
+      // looking for this, so a failure surfaces in the same Telegram channel as everything else.
+      await this.trySend(`⚠️<b>Не удалось сохранить/отправить скорость ответов за смену:</b> ${message}`);
     }
   }
 
