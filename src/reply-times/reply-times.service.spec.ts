@@ -94,4 +94,39 @@ describe('ReplyTimesService', () => {
 
     expect(builder.execute).toHaveBeenCalledTimes(2);
   });
+
+  describe('findSpeedByManager', () => {
+    const window = { since: new Date('2026-09-20T20:45:00.000Z'), until: new Date('2026-09-21T12:45:00.000Z') };
+    let selectBuilder: Record<string, jest.Mock>;
+
+    beforeEach(() => {
+      selectBuilder = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          { managerName: 'Аня', replies: '12', averageMinutes: 4.25 },
+          { managerName: 'Оля', replies: '3', averageMinutes: '10' },
+        ]),
+      };
+      repository.createQueryBuilder.mockReturnValue(selectBuilder);
+    });
+
+    it('turns the raw database strings into numbers, keeping the database order', async () => {
+      const speeds = await service.findSpeedByManager(window);
+
+      expect(speeds).toEqual([
+        { managerName: 'Аня', replies: 12, averageMinutes: 4.25 },
+        { managerName: 'Оля', replies: 3, averageMinutes: 10 },
+      ]);
+    });
+
+    it('only looks at replies made inside the window', async () => {
+      await service.findSpeedByManager(window);
+
+      expect(selectBuilder.where).toHaveBeenCalledWith(expect.stringContaining('repliedAt >= :since'), window);
+    });
+  });
 });

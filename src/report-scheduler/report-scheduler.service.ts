@@ -1,9 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { withHardTimeout } from '../claude/anthropic-client';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
 import { getKyivHourMinute } from '../kyiv-time';
 import { ManagerCharacteristicsService } from '../manager-characteristics/manager-characteristics.service';
 import { OrderSuccessAnalysisService } from '../order-success-analysis/order-success-analysis.service';
+import { formatShiftSpeedBlock } from '../reply-times/reply-times-formatter';
 import { ReplyTimesService } from '../reply-times/reply-times.service';
+import { getShiftWindow } from '../reply-times/shift-window';
 import { ReportRunStatusService } from '../report-run-status/report-run-status.service';
 import { runWithWatchdog } from '../report-watchdog';
 import { REPORT_TIMES } from '../status-report/status-report.constants';
@@ -71,6 +74,7 @@ export class ReportSchedulerService implements OnModuleInit {
       this.sendProgressPing(runStartedAt).catch((error) => this.logger.warn(`Progress ping failed: ${(error as Error).message}`));
     }, PROGRESS_PING_INTERVAL_MS);
 
+    let reportCompleted = false;
     try {
       await runWithWatchdog(this.orderSuccessAnalysisService.runAnalysis(), 'Анализ "Замовлення створено"', this.telegramService, this.logger);
       await runWithWatchdog(this.statusReportService.runReport(), 'Отчёт "Вибір товару"', this.telegramService, this.logger);
@@ -80,6 +84,7 @@ export class ReportSchedulerService implements OnModuleInit {
         this.telegramService,
         this.logger,
       );
+      reportCompleted = true;
       const elapsedMinutes = Math.round((Date.now() - runStartedAt.getTime()) / 60_000);
       this.logger.log(`Report run finished cleanly, started ${runStartedAt.toISOString()}, took ${elapsedMinutes} min`);
       await this.trySend(`✅<b>Отчёт полностью сформирован</b> (${elapsedMinutes} мин).`);
@@ -87,9 +92,30 @@ export class ReportSchedulerService implements OnModuleInit {
       clearInterval(progressTimer);
       this.reportRunStatusService.finish();
       // Owner's instruction (2026-09-21): reply times are saved only after the report is out, and
-      // not awaited — flush() never throws, and a stalled DB must never hold up anything here.
-      void this.replyTimesService.flush();
+      // not awaited — a stalled DB must never hold up anything here.
+      void this.saveReplyTimes({ runStartedAt, sendShiftSpeed: reportCompleted });
     }
+  }
+
+  /**
+   * Saves the replies queued during the run, then — only after a fully clean report — sends the
+   * per-manager speed for the shift as its own message. Never throws: it runs unawaited.
+   */
+  private async saveReplyTimes(params: { runStartedAt: Date; sendShiftSpeed: boolean }): Promise<void> {
+    try {
+      await this.replyTimesService.flush();
+      if (params.sendShiftSpeed) await this.sendShiftSpeed(params.runStartedAt);
+    } catch (error) {
+      this.logger.warn(`Could not save or report reply times: ${(error as Error).message}`);
+    }
+  }
+
+  /** Windowed by the run START, not the moment this is sent — a long run must not slide into the next shift. */
+  private async sendShiftSpeed(runStartedAt: Date): Promise<void> {
+    const window = getShiftWindow(runStartedAt);
+    const speeds = await withHardTimeout(this.replyTimesService.findSpeedByManager(window), 'ReplyTimesService.findSpeedByManager');
+    const block = formatShiftSpeedBlock(window, speeds);
+    if (block.length > 0) await this.trySend(block);
   }
 
   /** Calmer than the per-step watchdog alert — a routine "still working" heads-up, not "looks stuck". */

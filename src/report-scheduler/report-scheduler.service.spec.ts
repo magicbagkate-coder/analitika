@@ -16,7 +16,7 @@ describe('ReportSchedulerService.runBoth', () => {
   let telegramService: { sendMessage: jest.Mock };
   let reportRunStatusService: { start: jest.Mock; finish: jest.Mock };
   let evaluationHistoryService: { findSince: jest.Mock };
-  let replyTimesService: { flush: jest.Mock };
+  let replyTimesService: { flush: jest.Mock; findSpeedByManager: jest.Mock };
   const callOrder: string[] = [];
 
   beforeEach(async () => {
@@ -43,6 +43,7 @@ describe('ReportSchedulerService.runBoth', () => {
       flush: jest.fn().mockImplementation(async () => {
         callOrder.push('reply-times-flush');
       }),
+      findSpeedByManager: jest.fn().mockResolvedValue([]),
     };
 
     const module = await Test.createTestingModule({
@@ -126,5 +127,62 @@ describe('ReportSchedulerService.runBoth', () => {
 
     const texts = telegramService.sendMessage.mock.calls.map(([text]) => text);
     expect(texts.some((t) => t.includes('Отчёт полностью сформирован'))).toBe(false);
+  });
+
+  describe('shift speed message', () => {
+    const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+    const speeds = [{ managerName: 'Бурнацева Ольга', replies: 12, averageMinutes: 4.2 }];
+    const sentTexts = (): string[] => telegramService.sendMessage.mock.calls.map(([text]) => text);
+
+    it('sends per-manager speed for the shift as a separate message AFTER the report is complete', async () => {
+      replyTimesService.findSpeedByManager.mockResolvedValue(speeds);
+
+      await service.runBoth();
+      await settle();
+
+      const texts = sentTexts();
+      expect(texts[texts.length - 2]).toContain('Отчёт полностью сформирован');
+      expect(texts[texts.length - 1]).toContain('Скорость ответа менеджеров за смену');
+      expect(texts[texts.length - 1]).toContain('Бурнацева Ольга');
+    });
+
+    it('reads the speed only after the replies were saved, so the shift is complete', async () => {
+      replyTimesService.findSpeedByManager.mockImplementation(async () => {
+        callOrder.push('speed-query');
+        return speeds;
+      });
+
+      await service.runBoth();
+      await settle();
+
+      expect(callOrder.slice(-2)).toEqual(['reply-times-flush', 'speed-query']);
+    });
+
+    it('sends nothing extra when nobody replied in the shift', async () => {
+      await service.runBoth();
+      await settle();
+
+      expect(sentTexts().some((text) => text.includes('Скорость ответа'))).toBe(false);
+    });
+
+    it('does not send it after a failed report, only saves the replies', async () => {
+      statusReportService.runReport.mockRejectedValue(new Error('Claude down'));
+      replyTimesService.findSpeedByManager.mockResolvedValue(speeds);
+
+      await expect(service.runBoth()).rejects.toThrow();
+      await settle();
+
+      expect(replyTimesService.flush).toHaveBeenCalledTimes(1);
+      expect(replyTimesService.findSpeedByManager).not.toHaveBeenCalled();
+    });
+
+    it('a failing speed query never breaks the run, it is only logged', async () => {
+      replyTimesService.findSpeedByManager.mockRejectedValue(new Error('db down'));
+
+      await expect(service.runBoth()).resolves.toBeUndefined();
+      await settle();
+
+      expect(sentTexts().some((text) => text.includes('Скорость ответа'))).toBe(false);
+    });
   });
 });

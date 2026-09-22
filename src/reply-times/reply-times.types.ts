@@ -16,3 +16,15 @@ export type ReplyTimeRow = {
   repliedAt: Date;
   minutes: number;
 };
+
+/** [since, until) in real instants — replies made inside it belong to one shift. */
+export type ShiftWindow = {
+  since: Date;
+  until: Date;
+};
+
+export type ManagerReplySpeed = {
+  managerName: string;
+  replies: number;
+  averageMinutes: number;
+};

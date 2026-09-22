@@ -60,3 +60,23 @@ export function getKyivWeekday(): number {
   // Reconstructed as UTC midnight for that Kyiv calendar date — only the weekday is used.
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
+
+type KyivWallTimeParams = { dayStartUtc: Date; hour: number; minute: number };
+
+/**
+ * The UTC instant of hour:minute Kyiv time on the Kyiv day that starts at `dayStartUtc` (see
+ * startOfKyivDayUtc). On the two days a year the clocks change, midnight and the target time have
+ * different UTC offsets, so the first guess is corrected by the difference that Kyiv itself reports.
+ */
+export function kyivWallTimeToUtc(params: KyivWallTimeParams): Date {
+  const targetMinutes = params.hour * 60 + params.minute;
+  const guess = new Date(params.dayStartUtc.getTime() + targetMinutes * 60_000);
+  const shown = getKyivHourMinute(guess);
+  const offsetErrorMinutes = targetMinutes - (shown.hour * 60 + shown.minute);
+  return new Date(guess.getTime() + offsetErrorMinutes * 60_000);
+}
+
+/** "21.09" — day and month of the given instant on the Kyiv calendar. */
+export function formatKyivDayMonth(date: Date): string {
+  return new Intl.DateTimeFormat('ru-RU', { timeZone: KYIV_TIME_ZONE, day: '2-digit', month: '2-digit' }).format(date);
+}

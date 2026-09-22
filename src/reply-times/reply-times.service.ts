@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ReplyTimeEntity } from './reply-time.entity';
-import type { RecordRepliesParams, ReplyTimeRow } from './reply-times.types';
+import type { ManagerReplySpeed, RecordRepliesParams, ReplyTimeRow, ShiftWindow } from './reply-times.types';
 
 const INSERT_CHUNK_SIZE = 500;
 
@@ -46,6 +46,21 @@ export class ReplyTimesService {
     for (let start = 0; start < rows.length; start += INSERT_CHUNK_SIZE) {
       await this.tryInsert(rows.slice(start, start + INSERT_CHUNK_SIZE));
     }
+  }
+
+  /** Average wait per manager over replies made inside the window, busiest manager first. */
+  async findSpeedByManager(window: ShiftWindow): Promise<ManagerReplySpeed[]> {
+    const rows = await this.repository
+      .createQueryBuilder('reply')
+      .select('reply.managerName', 'managerName')
+      .addSelect('COUNT(*)', 'replies')
+      .addSelect('AVG(reply.minutes)', 'averageMinutes')
+      .where('reply.repliedAt >= :since AND reply.repliedAt < :until', window)
+      .groupBy('reply.managerName')
+      .orderBy('COUNT(*)', 'DESC')
+      .getRawMany<{ managerName: string; replies: string; averageMinutes: string }>();
+
+    return rows.map((row) => ({ managerName: row.managerName, replies: Number(row.replies), averageMinutes: Number(row.averageMinutes) }));
   }
 
   private async tryInsert(rows: ReplyTimeRow[]): Promise<void> {
