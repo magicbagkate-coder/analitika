@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ChatFailureTracker } from '../chat-failure-tracker';
 import { ClaudeSynthesisService } from '../claude/claude-synthesis.service';
 import { collectManagerNames } from '../claude/manager-context';
 import { EvaluationService } from '../evaluation/evaluation.service';
@@ -43,12 +44,17 @@ export class StatusReportService {
 
   async runReport(): Promise<void> {
     const chats = await this.fetchChatsInStatus();
-    const outcomes = await this.evaluateAll(chats);
+    const failures = new ChatFailureTracker();
+    const outcomes = await this.evaluateAll(chats, failures);
     const patterns = await this.trySynthesizePatterns(outcomes);
 
     const filePath = await this.writeReportFile(chats.length, outcomes, patterns);
     this.logger.log(`Status report written to ${filePath}`);
     await this.sendReportToTelegram(chats.length, outcomes, patterns);
+
+    // After the ИТОГ so a run that failed on every chat can't pass for a quiet shift (2026-10-10).
+    const warning = failures.formatWarning(`Отчёт "${TARGET_STATUS}"`, chats.length);
+    if (warning.length > 0) await this.trySendToTelegram(warning);
   }
 
   /**
@@ -168,11 +174,11 @@ export class StatusReportService {
     return all;
   }
 
-  private async evaluateAll(chats: ChatListItem[]): Promise<ChatOutcome[]> {
+  private async evaluateAll(chats: ChatListItem[], failures: ChatFailureTracker): Promise<ChatOutcome[]> {
     const outcomes: ChatOutcome[] = [];
 
     for (const chat of chats) {
-      const outcome = await this.tryEvaluateOneChat(chat);
+      const outcome = await this.tryEvaluateOneChat(chat, failures);
       if (outcome) outcomes.push(outcome);
       await this.delay(DELAY_BETWEEN_REQUESTS_MS);
     }
@@ -181,10 +187,11 @@ export class StatusReportService {
   }
 
   /** One chat's failure (Sitniks/Claude error) shouldn't stop the rest of the snapshot. */
-  private async tryEvaluateOneChat(chat: ChatListItem): Promise<ChatOutcome | null> {
+  private async tryEvaluateOneChat(chat: ChatListItem, failures: ChatFailureTracker): Promise<ChatOutcome | null> {
     try {
       return await this.evaluateOneChat(chat);
     } catch (error) {
+      failures.record(error);
       this.logger.warn(`Could not evaluate chat ${chat.id}: ${(error as Error).message}`);
       return null;
     }

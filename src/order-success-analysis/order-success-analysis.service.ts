@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ChatFailureTracker } from '../chat-failure-tracker';
 import { ClaudeSuccessService } from '../claude/claude-success.service';
 import { collectManagerNames } from '../claude/manager-context';
 import { ANALYSIS_WINDOW_HOURS, filterToRecentWindow } from '../evaluation/evaluation.constants';
@@ -43,10 +44,15 @@ export class OrderSuccessAnalysisService {
 
   async runAnalysis(): Promise<void> {
     const chats = await this.fetchChatsInStatus();
-    const outcomes = await this.analyzeAll(chats);
+    const failures = new ChatFailureTracker();
+    const outcomes = await this.analyzeAll(chats, failures);
 
     this.logger.log(`Order-success analysis: ${outcomes.length}/${chats.length} chats analyzed`);
     await this.sendToTelegram(chats.length, outcomes);
+
+    // Outside sendToTelegram: that one returns early on zero outcomes, exactly when this matters most.
+    const warning = failures.formatWarning(`Анализ "${ORDER_CREATED_STATUS}"`, chats.length);
+    if (warning.length > 0) await this.trySend(warning);
   }
 
   private async fetchChatsInStatus(): Promise<ChatListItem[]> {
@@ -64,11 +70,11 @@ export class OrderSuccessAnalysisService {
     return all;
   }
 
-  private async analyzeAll(chats: ChatListItem[]): Promise<OrderSuccessOutcome[]> {
+  private async analyzeAll(chats: ChatListItem[], failures: ChatFailureTracker): Promise<OrderSuccessOutcome[]> {
     const outcomes: OrderSuccessOutcome[] = [];
 
     for (const chat of chats) {
-      const outcome = await this.tryAnalyzeOneChat(chat);
+      const outcome = await this.tryAnalyzeOneChat(chat, failures);
       if (outcome) outcomes.push(outcome);
       await this.delay(DELAY_BETWEEN_REQUESTS_MS);
     }
@@ -77,10 +83,11 @@ export class OrderSuccessAnalysisService {
   }
 
   /** One chat's failure (Sitniks/Claude error) shouldn't stop the rest of the batch. */
-  private async tryAnalyzeOneChat(chat: ChatListItem): Promise<OrderSuccessOutcome | null> {
+  private async tryAnalyzeOneChat(chat: ChatListItem, failures: ChatFailureTracker): Promise<OrderSuccessOutcome | null> {
     try {
       return await this.analyzeOneChat(chat);
     } catch (error) {
+      failures.record(error);
       this.logger.warn(`Could not analyze chat ${chat.id}: ${(error as Error).message}`);
       return null;
     }
