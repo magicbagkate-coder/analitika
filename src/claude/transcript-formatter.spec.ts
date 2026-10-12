@@ -66,7 +66,7 @@ describe('formatTranscript — photos and videos', () => {
 
   it('renders several photos in a row as separate marked lines, so a package of colours reads as photos, not blanks', () => {
     const lines = formatTranscript([mediaMessage('1', 'image'), mediaMessage('2', 'image'), mediaMessage('3', 'video')]).split('\n');
-    expect(lines.map((line) => line.replace(/^\[[^\]]+\] Аня: /, ''))).toEqual(['[фото]', '[фото]', '[відео]']);
+    expect(lines.map((line) => line.replace(/^\[[^\]]+\] Аня: /, '')).sort()).toEqual(['[відео]', '[фото]', '[фото]']);
   });
 
   it('labels an unrecognised non-text type as a generic attachment only when it has no text', () => {
@@ -83,5 +83,32 @@ describe('formatTranscript — photos and videos', () => {
 describe('toKyivTime', () => {
   it('formats a UTC ISO string as DD.MM.YYYY, HH:mm in Kyiv time', () => {
     expect(toKyivTime('2026-09-18T12:45:00.000Z')).toBe('18.09.2026, 15:45');
+  });
+});
+
+describe('formatTranscript — chronological order', () => {
+  const newestFirst: ChatMessage[] = [
+    { id: '3', sentBy: 'acct1', managerName: 'Аня', text: 'Бажаєте оформити?', createdAt: '2026-09-18T10:02:00.000Z', isViewedByUser: true },
+    { id: '2', sentBy: 'acct1', managerName: 'Аня', text: 'Ціна 2950', createdAt: '2026-09-18T10:01:00.000Z', isViewedByUser: true },
+    { id: '1', sentBy: 'client123', text: 'Привіт', createdAt: '2026-09-18T10:00:00.000Z', isViewedByUser: true },
+  ];
+
+  it('puts the oldest message first even though Sitniks returns them newest-first', () => {
+    const lines = formatTranscript(newestFirst).split('\n');
+
+    expect(lines.map((line) => line.split(': ')[1])).toEqual(['Привіт', 'Ціна 2950', 'Бажаєте оформити?']);
+  });
+
+  it('gives the same transcript if the messages already arrive oldest-first', () => {
+    expect(formatTranscript([...newestFirst].reverse())).toBe(formatTranscript(newestFirst));
+  });
+
+  it('keeps messages sent in the same second in the order Sitniks reports them, oldest first', () => {
+    const sameSecond: ChatMessage[] = [
+      { id: '2', sentBy: 'acct1', managerName: 'Аня', text: 'друге', createdAt: '2026-09-18T10:00:00.000Z', isViewedByUser: true },
+      { id: '1', sentBy: 'acct1', managerName: 'Аня', text: 'перше', createdAt: '2026-09-18T10:00:00.000Z', isViewedByUser: true },
+    ];
+
+    expect(formatTranscript(sameSecond).split('\n').map((line) => line.split(': ')[1])).toEqual(['перше', 'друге']);
   });
 });

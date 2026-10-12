@@ -29,9 +29,14 @@ const UNKNOWN_ATTACHMENT_LABEL = '[вкладення]';
 export function formatTranscript(messages: ChatMessage[]): string {
   const accountSentBy = messages.find((message) => message.managerName)?.sentBy;
 
-  return messages
+  return sortChronologically(messages)
     .map((message) => `[${toKyivTime(message.createdAt)}] ${speakerLabel(message, accountSentBy)}: ${messageContent(message)}${unreadMarker(message)}`)
     .join('\n');
+}
+
+/** Sitniks returns newest-first; read backwards, "which message came first" (order of the reply, who answered what) gets judged wrongly. */
+function sortChronologically(messages: ChatMessage[]): ChatMessage[] {
+  return [...messages].reverse().sort((first, second) => Date.parse(first.createdAt) - Date.parse(second.createdAt));
 }
 
 function messageContent(message: ChatMessage): string {
