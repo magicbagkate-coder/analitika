@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
 import { AppConfigService } from '../config/app-config.service';
+import { retryOnRateLimit } from './retry-on-rate-limit';
 
 type QueryParams = Record<string, string | number | boolean | string[] | undefined>;
 
@@ -22,22 +23,22 @@ export class SitniksClientService {
   ) {}
 
   async get<Response>(path: string, params?: QueryParams): Promise<Response> {
-    const response = await firstValueFrom(
-      this.httpService.get<Response>(this.buildUrl(path), { headers: this.buildHeaders(), params, timeout: REQUEST_TIMEOUT_MS }),
+    const response = await retryOnRateLimit(() =>
+      firstValueFrom(this.httpService.get<Response>(this.buildUrl(path), { headers: this.buildHeaders(), params, timeout: REQUEST_TIMEOUT_MS })),
     );
     return response.data;
   }
 
   async post<Response, Body>(path: string, body: Body): Promise<Response> {
-    const response = await firstValueFrom(
-      this.httpService.post<Response>(this.buildUrl(path), body, { headers: this.buildHeaders(), timeout: REQUEST_TIMEOUT_MS }),
+    const response = await retryOnRateLimit(() =>
+      firstValueFrom(this.httpService.post<Response>(this.buildUrl(path), body, { headers: this.buildHeaders(), timeout: REQUEST_TIMEOUT_MS })),
     );
     return response.data;
   }
 
   async put<Response, Body>(path: string, body: Body): Promise<Response> {
-    const response = await firstValueFrom(
-      this.httpService.put<Response>(this.buildUrl(path), body, { headers: this.buildHeaders(), timeout: REQUEST_TIMEOUT_MS }),
+    const response = await retryOnRateLimit(() =>
+      firstValueFrom(this.httpService.put<Response>(this.buildUrl(path), body, { headers: this.buildHeaders(), timeout: REQUEST_TIMEOUT_MS })),
     );
     return response.data;
   }
