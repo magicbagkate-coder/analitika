@@ -22,7 +22,22 @@ describe('SitniksChatMessagesService', () => {
     const result = await service.listMessages({ chatId: 'abc123', limit: 50 });
 
     expect(client.get).toHaveBeenCalledWith('/open-api/chats/abc123/messages', { limit: 50 });
-    expect(result).toBe(response);
+    expect(result).toEqual(response);
+  });
+
+  it('drops internal notes but keeps standard and scope-less messages', async () => {
+    const base = { sentBy: 's', text: 't', createdAt: '2026-10-14T06:49:48.617Z', isViewedByUser: true };
+    client.get.mockResolvedValue({
+      data: [
+        { ...base, id: 'a', messageScope: 'standard' },
+        { ...base, id: 'b', messageScope: 'internal_note' },
+        { ...base, id: 'c' },
+      ],
+    });
+
+    const result = await service.listMessages({ chatId: 'abc123' });
+
+    expect(result.data.map((message) => message.id)).toEqual(['a', 'c']);
   });
 
   it('does not leak chatId into the query params', async () => {

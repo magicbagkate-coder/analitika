@@ -16,6 +16,8 @@ export type ChatMessage = {
   isViewedByUser: boolean;
   /** "text", "image" or "video" seen live — photo/video messages arrive with an empty `text`. */
   messageType?: string;
+  /** "standard" (visible to the client) or "internal_note" (staff-only, never sent to the client); absent on some old messages. */
+  messageScope?: string;
 };
 
 export type ListChatMessagesResponse = {
