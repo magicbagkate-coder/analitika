@@ -16,11 +16,15 @@ describe('getCanonicalManagerName', () => {
 
 describe('getManagerRole', () => {
   it('finds a role by full canonical name', () => {
-    expect(getManagerRole('Ольга Шульц')).toBe('керівник зміни');
+    expect(getManagerRole('Бурнацева Ольга')).toBe('керівник зміни');
   });
 
   it('resolves an alias before looking up the role', () => {
-    expect(getManagerRole('Ольга')).toBe('керівник зміни');
+    expect(getManagerRole('Віолетта')).toBe('старший менеджер');
+  });
+
+  it('returns undefined for a manager who has left', () => {
+    expect(getManagerRole('Карина Ковальчук')).toBeUndefined();
   });
 
   it('returns undefined for a name not on the roster', () => {
