@@ -35,20 +35,26 @@ describe('ClaudeService.evaluateChat verification of low scores', () => {
     expect(result.score).toBe(4);
   });
 
-  it('does not verify when there are already no mistakes, and lifts the score to 4', async () => {
-    const result = await evaluateWith({ ...evaluation, mistakes: 'Явных ошибок нет.' });
+  it('caps a score at 4 when mistakes are present', async () => {
+    const result = await evaluateWith({ ...evaluation, score: 5 });
 
-    expect(verifier.verifyMistakes).not.toHaveBeenCalled();
     expect(result.score).toBe(4);
   });
 
-  it('gives "no mistakes" and a score of at least 4 when no claim survives', async () => {
+  it('does not verify when there are already no mistakes, and gives 5', async () => {
+    const result = await evaluateWith({ ...evaluation, mistakes: 'Явных ошибок нет.' });
+
+    expect(verifier.verifyMistakes).not.toHaveBeenCalled();
+    expect(result.score).toBe(5);
+  });
+
+  it('gives "no mistakes" and 5 when no claim survives', async () => {
     verifier.verifyMistakes.mockResolvedValue({ confirmedClaims: [] });
 
     const result = await evaluateWith(evaluation);
 
     expect(result.mistakes).toBe('Явных ошибок нет.');
-    expect(result.score).toBe(4);
+    expect(result.score).toBe(5);
   });
 
   it('keeps only the confirmed claims and the score when some survive', async () => {

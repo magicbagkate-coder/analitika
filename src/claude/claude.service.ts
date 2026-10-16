@@ -13,7 +13,8 @@ import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages
 const EVALUATION_TOOL_NAME = 'submit_chat_evaluation';
 const VERIFY_SCORE_LIMIT = 3;
 const NO_MISTAKES_TEXT = 'Явных ошибок нет.';
-const SCORE_WITHOUT_MISTAKES = 4;
+const SCORE_WITHOUT_MISTAKES = 5;
+const MAX_SCORE_WITH_MISTAKES = 4;
 const INCOMPLETE_EVALUATION_PREFIX = 'Claude returned an incomplete evaluation';
 
 /** Asks Claude to score a manager-client chat and explain the outcome. */
@@ -31,7 +32,7 @@ export class ClaudeService {
 
   async evaluateChat(messages: ChatMessage[], clientName: string): Promise<ChatEvaluationResult> {
     const evaluation = await this.requestEvaluationWithRetry(messages, clientName);
-    return this.verifyLowScore({ evaluation, messages, clientName });
+    return this.applyScoreRule(await this.verifyLowScore({ evaluation, messages, clientName }));
   }
 
   /**
@@ -42,17 +43,26 @@ export class ClaudeService {
    */
   private async verifyLowScore(params: { evaluation: ChatEvaluationResult; messages: ChatMessage[]; clientName: string }): Promise<ChatEvaluationResult> {
     const { evaluation, messages, clientName } = params;
-    if (evaluation.mistakes.startsWith(NO_MISTAKES_TEXT)) return { ...evaluation, score: Math.max(evaluation.score, SCORE_WITHOUT_MISTAKES) };
-    if (evaluation.score > VERIFY_SCORE_LIMIT) return evaluation;
+    if (evaluation.mistakes.startsWith(NO_MISTAKES_TEXT) || evaluation.score > VERIFY_SCORE_LIMIT) return evaluation;
 
     try {
       const verified = await this.mistakesVerifier.verifyMistakes({ clientName, messages, mistakes: evaluation.mistakes });
       if (verified.confirmedClaims.length > 0) return { ...evaluation, mistakes: verified.confirmedClaims.join(' ') };
-      return { ...evaluation, mistakes: NO_MISTAKES_TEXT, score: Math.max(evaluation.score, SCORE_WITHOUT_MISTAKES) };
+      return { ...evaluation, mistakes: NO_MISTAKES_TEXT };
     } catch (error) {
       this.logger.warn(`Could not verify mistakes for ${clientName}, keeping the original: ${(error as Error).message}`);
       return evaluation;
     }
+  }
+
+  /**
+   * 4 vs 5 for a chat with no proven mistakes used to be a coin flip of the model (2026-10-16: the same
+   * flawless chats scored 4 or 5 from run to run). Owner's rule: no proven personal mistakes = 5;
+   * with mistakes the model's own score stands but is capped at 4.
+   */
+  private applyScoreRule(evaluation: ChatEvaluationResult): ChatEvaluationResult {
+    if (evaluation.mistakes.startsWith(NO_MISTAKES_TEXT)) return { ...evaluation, score: SCORE_WITHOUT_MISTAKES };
+    return { ...evaluation, score: Math.min(evaluation.score, MAX_SCORE_WITH_MISTAKES) };
   }
 
   /** The model sometimes leaves a required field out of a finished tool call; a second try almost always fills it. */
@@ -128,7 +138,7 @@ export class ClaudeService {
               'клиентка в процессе, но менеджер всё сделал верно и по регламенту). 4 = хорошая работа, максимум ' +
               'мелкие недочёты. 3 = средне: есть реальные, подтверждённые перепиской промахи, которые заметно ' +
               'тормозят продажу. Идеи "как можно было сильнее" без реальных промахов — это 4-5, а не 3. Если в ' +
-              'mistakes нет личных промахов ("Явных ошибок нет") — оценка только 4 или 5. ' +
+              'mistakes нет личных промахов ("Явных ошибок нет") — оценка 5. Если ошибки есть — не выше 4. ' +
               '2 = плохо, явные ошибки, которые реально мешают продаже (проигнорировал вопрос, нарушил регламент, ' +
               'грубость). 1 = очень плохо, грубые нарушения. Низкая оценка — только за реальные промахи в ' +
               'процессе, не за то, что клиентка пока не решилась.',
