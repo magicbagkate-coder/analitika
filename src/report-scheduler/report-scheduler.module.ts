@@ -4,6 +4,7 @@ import { ManagerCharacteristicsModule } from '../manager-characteristics/manager
 import { OrderSuccessAnalysisModule } from '../order-success-analysis/order-success-analysis.module';
 import { ReplyTimesModule } from '../reply-times/reply-times.module';
 import { ReportRunStatusModule } from '../report-run-status/report-run-status.module';
+import { SheetsExportModule } from '../sheets-export/sheets-export.module';
 import { StatusReportModule } from '../status-report/status-report.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { ReportSchedulerService } from './report-scheduler.service';
@@ -17,6 +18,7 @@ import { ReportSchedulerService } from './report-scheduler.service';
     ReportRunStatusModule,
     EvaluationHistoryModule,
     ReplyTimesModule,
+    SheetsExportModule,
   ],
   providers: [ReportSchedulerService],
   exports: [ReportSchedulerService],

@@ -7,6 +7,9 @@ services:
       POSTGRES_HOST: postgres
     ports:
       - "3000:3000"
+    # Google service-account key for the spreadsheet export — kept outside the repo, mounted read-only.
+    volumes:
+      - ${GOOGLE_SECRETS_DIR:-/home/cloud/secrets}:/run/secrets/google:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -9,6 +9,7 @@ import { ReplyTimesService } from '../reply-times/reply-times.service';
 import { getShiftWindow } from '../reply-times/shift-window';
 import { ReportRunStatusService } from '../report-run-status/report-run-status.service';
 import { runWithWatchdog } from '../report-watchdog';
+import { SheetsExportService } from '../sheets-export/sheets-export.service';
 import { REPORT_TIMES } from '../status-report/status-report.constants';
 import { StatusReportService } from '../status-report/status-report.service';
 import { TelegramService } from '../telegram/telegram.service';
@@ -43,6 +44,7 @@ export class ReportSchedulerService implements OnModuleInit {
     private readonly reportRunStatusService: ReportRunStatusService,
     private readonly evaluationHistoryService: EvaluationHistoryService,
     private readonly replyTimesService: ReplyTimesService,
+    private readonly sheetsExportService: SheetsExportService,
   ) {}
 
   onModuleInit(): void {
@@ -111,6 +113,18 @@ export class ReportSchedulerService implements OnModuleInit {
       // Owner's instruction (2026-09-22): a silent log line isn't enough — she shouldn't have to go
       // looking for this, so a failure surfaces in the same Telegram channel as everything else.
       await this.trySend(`⚠️<b>Не удалось сохранить/отправить скорость ответов за смену:</b> ${message}`);
+    }
+    await this.exportToSheets();
+  }
+
+  /** After the reply times are saved, so the speed tab includes this shift. Never throws: it runs unawaited. */
+  private async exportToSheets(): Promise<void> {
+    try {
+      await this.sheetsExportService.exportAll();
+    } catch (error) {
+      const message = (error as Error).message;
+      this.logger.warn(`Could not update the Google spreadsheet: ${message}`);
+      await this.trySend(`⚠️<b>Не удалось обновить Google-таблицу:</b> ${message}`);
     }
   }
 

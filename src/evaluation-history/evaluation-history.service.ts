@@ -31,4 +31,13 @@ export class EvaluationHistoryService {
   async findSince(cutoff: Date): Promise<EvaluationHistoryEntity[]> {
     return this.repository.find({ where: { recordedAt: MoreThanOrEqual(cutoff) }, order: { recordedAt: 'ASC' } });
   }
+
+  /** Same rows without the long note text — only the columns the score tables use are loaded. */
+  async findScoresSince(cutoff: Date): Promise<EvaluationHistoryEntity[]> {
+    return this.repository.find({
+      select: { managerNames: true, score: true, source: true, recordedAt: true },
+      where: { recordedAt: MoreThanOrEqual(cutoff) },
+      order: { recordedAt: 'ASC' },
+    });
+  }
 }

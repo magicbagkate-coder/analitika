@@ -4,6 +4,7 @@ import { ManagerCharacteristicsService } from '../manager-characteristics/manage
 import { OrderSuccessAnalysisService } from '../order-success-analysis/order-success-analysis.service';
 import { ReplyTimesService } from '../reply-times/reply-times.service';
 import { ReportRunStatusService } from '../report-run-status/report-run-status.service';
+import { SheetsExportService } from '../sheets-export/sheets-export.service';
 import { StatusReportService } from '../status-report/status-report.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { ReportSchedulerService } from './report-scheduler.service';
@@ -17,6 +18,7 @@ describe('ReportSchedulerService.runBoth', () => {
   let reportRunStatusService: { start: jest.Mock; finish: jest.Mock };
   let evaluationHistoryService: { findSince: jest.Mock };
   let replyTimesService: { flush: jest.Mock; findSpeedByManager: jest.Mock };
+  let sheetsExportService: { exportAll: jest.Mock };
   const callOrder: string[] = [];
 
   beforeEach(async () => {
@@ -45,6 +47,7 @@ describe('ReportSchedulerService.runBoth', () => {
       }),
       findSpeedByManager: jest.fn().mockResolvedValue([]),
     };
+    sheetsExportService = { exportAll: jest.fn().mockResolvedValue(undefined) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -56,6 +59,7 @@ describe('ReportSchedulerService.runBoth', () => {
         { provide: ReportRunStatusService, useValue: reportRunStatusService },
         { provide: EvaluationHistoryService, useValue: evaluationHistoryService },
         { provide: ReplyTimesService, useValue: replyTimesService },
+        { provide: SheetsExportService, useValue: sheetsExportService },
       ],
     }).compile();
     service = module.get(ReportSchedulerService);
@@ -127,6 +131,42 @@ describe('ReportSchedulerService.runBoth', () => {
 
     const texts = telegramService.sendMessage.mock.calls.map(([text]) => text);
     expect(texts.some((t) => t.includes('Отчёт полностью сформирован'))).toBe(false);
+  });
+
+  describe('Google spreadsheet update', () => {
+    const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+    const sentTexts = (): string[] => telegramService.sendMessage.mock.calls.map(([text]) => text);
+
+    it('updates the spreadsheet only after the reply times were saved, so the speed tab includes the shift', async () => {
+      sheetsExportService.exportAll.mockImplementation(async () => {
+        callOrder.push('sheets-export');
+      });
+
+      await service.runBoth();
+      await settle();
+
+      expect(callOrder.slice(-2)).toEqual(['reply-times-flush', 'sheets-export']);
+    });
+
+    it('still updates the spreadsheet after a failed report, because chats evaluated before the failure are in the history', async () => {
+      statusReportService.runReport.mockRejectedValue(new Error('Claude down'));
+
+      await expect(service.runBoth()).rejects.toThrow();
+      await settle();
+
+      expect(sheetsExportService.exportAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failing update never breaks the run, but she gets a Telegram warning instead of silence', async () => {
+      sheetsExportService.exportAll.mockRejectedValue(new Error('403 forbidden'));
+
+      await expect(service.runBoth()).resolves.toBeUndefined();
+      await settle();
+
+      const texts = sentTexts();
+      expect(texts[texts.length - 1]).toContain('Не удалось обновить Google-таблицу');
+      expect(texts[texts.length - 1]).toContain('403 forbidden');
+    });
   });
 
   describe('shift speed message', () => {

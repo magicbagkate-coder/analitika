@@ -34,6 +34,15 @@ export class AppConfigService {
     return this.requireEnv('TELEGRAM_CHAT_ID');
   }
 
+  /** Optional: without both Google settings the spreadsheet export is simply switched off. */
+  getGoogleSheetsId(): string | null {
+    return this.configService.get<string>('GOOGLE_SHEETS_ID') || null;
+  }
+
+  getGoogleKeyFile(): string | null {
+    return this.configService.get<string>('GOOGLE_SERVICE_ACCOUNT_KEY_FILE') || null;
+  }
+
   getPostgresHost(): string {
     return this.configService.get<string>('POSTGRES_HOST', 'postgres');
   }
