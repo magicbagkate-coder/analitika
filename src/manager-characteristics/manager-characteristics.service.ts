@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ClaudeManagerSummaryService } from '../claude/claude-manager-summary.service';
 import { getCanonicalManagerName } from '../evaluation/manager-roles.constants';
 import { EvaluationHistoryService } from '../evaluation-history/evaluation-history.service';
+import { getShiftWindow } from '../reply-times/shift-window';
 import { TelegramService } from '../telegram/telegram.service';
+import { CharacteristicTextsService } from './characteristic-texts.service';
 import { formatManagerCharacteristics } from './manager-characteristics-formatter';
 import type { ManagerRunNotes } from '../claude/claude-manager-summary.service';
 import type { EvaluationHistoryEntity } from '../evaluation-history/evaluation-history.entity';
@@ -23,6 +25,7 @@ export class ManagerCharacteristicsService {
     private readonly evaluationHistoryService: EvaluationHistoryService,
     private readonly claudeManagerSummaryService: ClaudeManagerSummaryService,
     private readonly telegramService: TelegramService,
+    private readonly characteristicTextsService: CharacteristicTextsService,
   ) {}
 
   async runSummary(since: Date): Promise<void> {
@@ -39,6 +42,7 @@ export class ManagerCharacteristicsService {
     for (const message of messages) {
       await this.trySend(message);
     }
+    await this.characteristicTextsService.recordRun({ reportAt: getShiftWindow(since).until, characteristics });
   }
 
   /**

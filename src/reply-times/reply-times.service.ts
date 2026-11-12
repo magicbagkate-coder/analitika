@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ReplyTimeEntity } from './reply-time.entity';
-import type { ManagerReplySpeed, RecordRepliesParams, ReplyTimeRow, ShiftWindow } from './reply-times.types';
+import type { DailyManagerSpeed, ManagerReplySpeed, RecordRepliesParams, ReplyTimeRow, ShiftWindow } from './reply-times.types';
 
 const INSERT_CHUNK_SIZE = 500;
 
@@ -61,6 +61,27 @@ export class ReplyTimesService {
       .getRawMany<{ managerName: string; replies: string; averageMinutes: string }>();
 
     return rows.map((row) => ({ managerName: row.managerName, replies: Number(row.replies), averageMinutes: Number(row.averageMinutes) }));
+  }
+
+  /** Every manager's reply count and average wait per Kyiv calendar day, for the whole history. */
+  async findDailySpeed(): Promise<DailyManagerSpeed[]> {
+    const dayExpression = `to_char(timezone('Europe/Kyiv', timezone('UTC', reply.repliedAt)), 'YYYY-MM-DD')`;
+    const rows = await this.repository
+      .createQueryBuilder('reply')
+      .select('reply.managerName', 'managerName')
+      .addSelect(dayExpression, 'dayKey')
+      .addSelect('COUNT(*)', 'replies')
+      .addSelect('AVG(reply.minutes)', 'averageMinutes')
+      .groupBy('reply.managerName')
+      .addGroupBy(dayExpression)
+      .getRawMany<{ managerName: string; dayKey: string; replies: string; averageMinutes: string }>();
+
+    return rows.map((row) => ({
+      dayKey: row.dayKey,
+      managerName: row.managerName,
+      replies: Number(row.replies),
+      averageMinutes: Number(row.averageMinutes),
+    }));
   }
 
   private async tryInsert(rows: ReplyTimeRow[]): Promise<void> {

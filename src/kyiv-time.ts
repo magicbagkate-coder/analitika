@@ -80,3 +80,8 @@ export function kyivWallTimeToUtc(params: KyivWallTimeParams): Date {
 export function formatKyivDayMonth(date: Date): string {
   return new Intl.DateTimeFormat('ru-RU', { timeZone: KYIV_TIME_ZONE, day: '2-digit', month: '2-digit' }).format(date);
 }
+
+/** "2026-11-12" — the Kyiv calendar date of the given instant, sortable and usable as a map key. */
+export function formatKyivDateKey(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: KYIV_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}

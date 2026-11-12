@@ -28,3 +28,11 @@ export type ManagerReplySpeed = {
   replies: number;
   averageMinutes: number;
 };
+
+/** One manager's replies on one Kyiv calendar day; `dayKey` is "YYYY-MM-DD". */
+export type DailyManagerSpeed = {
+  dayKey: string;
+  managerName: string;
+  replies: number;
+  averageMinutes: number;
+};

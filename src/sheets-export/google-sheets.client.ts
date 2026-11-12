@@ -1,14 +1,19 @@
 import { auth, sheets, type sheets_v4 } from '@googleapis/sheets';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import type { SheetTable } from './sheets-export.types';
+import type { SheetBlock } from './sheets-export.types';
 
 const SPREADSHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
+const ALPHABET_SIZE = 26;
 
-type RebuildChartsParams = {
-  chartsSheetId: number;
-  addRequests: sheets_v4.Schema$Request[];
-};
+type WriteBlocksParams = { title: string; blocks: SheetBlock[] };
+type RebuildTabParams = { sheetId: number; requests: sheets_v4.Schema$Request[] };
+
+/** "A", "B", ..., "Z", "AA" — the A1 letters of a zero-based column index. */
+function columnLetters(index: number): string {
+  const letter = String.fromCharCode(65 + (index % ALPHABET_SIZE));
+  return index < ALPHABET_SIZE ? letter : columnLetters(Math.floor(index / ALPHABET_SIZE) - 1) + letter;
+}
 
 /** Thin wrapper over the Google Sheets API for one spreadsheet, authorised as a service account. */
 @Injectable()
@@ -21,35 +26,31 @@ export class GoogleSheetsClient {
     return this.appConfig.getGoogleSheetsId() !== null && this.appConfig.getGoogleKeyFile() !== null;
   }
 
-  /** Creates the tabs that are missing and returns the sheet id of every requested tab by its title. */
-  async ensureTabs(titles: string[]): Promise<Map<string, number>> {
+  /** Creates the tabs that are missing, removes the retired ones and returns every tab's sheet id by title. */
+  async syncTabs(params: { wanted: string[]; retired: string[] }): Promise<Map<string, number>> {
     const existing = await this.readTabIds();
-    const missing = titles.filter((title) => !existing.has(title));
-    if (missing.length > 0) {
-      await this.sendRequests(missing.map((title) => ({ addSheet: { properties: { title } } })));
-      return this.readTabIds();
-    }
-    return existing;
+    const addRequests = params.wanted.filter((title) => !existing.has(title)).map((title) => ({ addSheet: { properties: { title } } }));
+    const deleteRequests = params.retired.filter((title) => existing.has(title)).map((title) => ({ deleteSheet: { sheetId: existing.get(title) } }));
+    if (addRequests.length + deleteRequests.length === 0) return existing;
+
+    await this.sendRequests([...addRequests, ...deleteRequests]);
+    return this.readTabIds();
   }
 
-  /** Replaces everything on the table's tab with the table's cells. */
-  async writeTable(table: SheetTable): Promise<void> {
-    const range = `'${table.title}'`;
+  /** Clears every value on the tab, then writes each block at its own position. */
+  async writeBlocks(params: WriteBlocksParams): Promise<void> {
+    const range = `'${params.title}'`;
     await this.getApi().spreadsheets.values.clear({ spreadsheetId: this.getSpreadsheetId(), range });
-    await this.getApi().spreadsheets.values.update({
-      spreadsheetId: this.getSpreadsheetId(),
-      range: `${range}!A1`,
-      valueInputOption: 'RAW',
-      requestBody: { values: table.values },
-    });
+    const data = params.blocks.map((block) => ({ range: `${range}!${columnLetters(block.startColumn)}${block.startRow + 1}`, values: block.values }));
+    await this.getApi().spreadsheets.values.batchUpdate({ spreadsheetId: this.getSpreadsheetId(), requestBody: { valueInputOption: 'RAW', data } });
   }
 
-  /** Charts keep the row range they were created with, so they are dropped and drawn again after each update. */
-  async rebuildCharts(params: RebuildChartsParams): Promise<void> {
+  /** Charts keep the row range they were created with, so the tab's charts are dropped and drawn again with the new requests. */
+  async rebuildTab(params: RebuildTabParams): Promise<void> {
     const spreadsheet = await this.getApi().spreadsheets.get({ spreadsheetId: this.getSpreadsheetId() });
-    const chartsSheet = spreadsheet.data.sheets?.find((sheet) => sheet.properties?.sheetId === params.chartsSheetId);
-    const deleteRequests = (chartsSheet?.charts ?? []).map((chart) => ({ deleteEmbeddedObject: { objectId: chart.chartId } }));
-    await this.sendRequests([...deleteRequests, ...params.addRequests]);
+    const tab = spreadsheet.data.sheets?.find((sheet) => sheet.properties?.sheetId === params.sheetId);
+    const deleteRequests = (tab?.charts ?? []).map((chart) => ({ deleteEmbeddedObject: { objectId: chart.chartId } }));
+    await this.sendRequests([...deleteRequests, ...params.requests]);
   }
 
   private async readTabIds(): Promise<Map<string, number>> {
