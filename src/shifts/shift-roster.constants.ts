@@ -20,6 +20,8 @@ export const SHIFT_ROSTERS: ShiftRoster[] = [
   {
     shiftKey: 'shift-1',
     tabTitle: 'Смена 1 — Оля',
+    // The owner keeps the spreadsheet from November on (2026-11-12).
+    firstDayKey: '2026-11-01',
     members: [
       { managerName: 'Бурнацева Ольга', roleLabel: 'Старшая смены' },
       { managerName: 'Віолетта Бабак', roleLabel: 'Старший менеджер' },
@@ -30,6 +32,8 @@ export const SHIFT_ROSTERS: ShiftRoster[] = [
   {
     shiftKey: 'shift-2',
     tabTitle: 'Смена 2 — Наташа',
+    // The owner keeps the spreadsheet from November on (2026-11-12).
+    firstDayKey: '2026-11-01',
     members: [
       { managerName: 'Попович Наталія', roleLabel: 'Старшая смены' },
       { managerName: 'Офіленко Євгенія', roleLabel: 'Старший менеджер' },
