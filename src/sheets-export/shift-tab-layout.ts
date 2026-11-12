@@ -136,15 +136,18 @@ function buildChartBlocks(params: { shift: ShiftRoster; days: ShiftDay[]; firstC
 }
 
 /**
- * The tab of one shift (owner's layout of 2026-11-12): days run to the right, newest first; rows go
+ * The tab of one shift (owner's layout of 2026-11-12): days run to the right, oldest first; rows go
  * down by group — the whole shift (problems and totals), then each manager (chats, score, speed,
  * characteristic). Charts are drawn under the table; their data sits to the right of it.
  */
 export function buildShiftTabLayout(params: { shift: ShiftRoster; days: ShiftDay[] }): ShiftTabLayout {
-  const header: SheetValue[] = [...TABLE_HEADER, ...params.days.map((day) => formatDayLabel(day.dayKey))];
+  // Owner's request (2026-11-12): oldest day on the left, today on the right, like her shift
+  // schedule — so she can hide the old columns and keep the latest days in view.
+  const ascending = [...params.days].reverse();
+  const header: SheetValue[] = [...TABLE_HEADER, ...ascending.map((day) => formatDayLabel(day.dayKey))];
   const groupRows = [
-    shiftRows(params.days),
-    ...params.shift.members.map((member) => managerRows({ days: params.days, managerName: member.managerName, roleLabel: member.roleLabel })),
+    shiftRows(ascending),
+    ...params.shift.members.map((member) => managerRows({ days: ascending, managerName: member.managerName, roleLabel: member.roleLabel })),
   ];
 
   const firstGroupRow = HEADER_ROW + 1;
