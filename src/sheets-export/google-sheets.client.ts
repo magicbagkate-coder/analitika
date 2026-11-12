@@ -6,7 +6,7 @@ import type { SheetBlock } from './sheets-export.types';
 const SPREADSHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const ALPHABET_SIZE = 26;
 
-type WriteBlocksParams = { title: string; blocks: SheetBlock[] };
+type WriteBlocksParams = { sheetId: number; title: string; blocks: SheetBlock[] };
 type RebuildTabParams = { sheetId: number; requests: sheets_v4.Schema$Request[] };
 
 /** "A", "B", ..., "Z", "AA" — the A1 letters of a zero-based column index. */
@@ -37,8 +37,15 @@ export class GoogleSheetsClient {
     return this.readTabIds();
   }
 
-  /** Clears every value on the tab, then writes each block at its own position. */
+  /**
+   * Clears every value on the tab, then writes each block at its own position. The grid is grown
+   * first, so a table wider than the default 26 columns never fails with "exceeds grid limits".
+   */
   async writeBlocks(params: WriteBlocksParams): Promise<void> {
+    const columnCount = Math.max(...params.blocks.map((block) => block.startColumn + Math.max(...block.values.map((row) => row.length))));
+    const rowCount = Math.max(...params.blocks.map((block) => block.startRow + block.values.length));
+    await this.ensureGridSize({ sheetId: params.sheetId, columnCount, rowCount });
+
     const range = `'${params.title}'`;
     await this.getApi().spreadsheets.values.clear({ spreadsheetId: this.getSpreadsheetId(), range });
     const data = params.blocks.map((block) => ({ range: `${range}!${columnLetters(block.startColumn)}${block.startRow + 1}`, values: block.values }));
@@ -51,6 +58,18 @@ export class GoogleSheetsClient {
     const tab = spreadsheet.data.sheets?.find((sheet) => sheet.properties?.sheetId === params.sheetId);
     const deleteRequests = (tab?.charts ?? []).map((chart) => ({ deleteEmbeddedObject: { objectId: chart.chartId } }));
     await this.sendRequests([...deleteRequests, ...params.requests]);
+  }
+
+  private async ensureGridSize(params: { sheetId: number; columnCount: number; rowCount: number }): Promise<void> {
+    const spreadsheet = await this.getApi().spreadsheets.get({ spreadsheetId: this.getSpreadsheetId() });
+    const grid = spreadsheet.data.sheets?.find((sheet) => sheet.properties?.sheetId === params.sheetId)?.properties?.gridProperties;
+    const columnCount = Math.max(grid?.columnCount ?? 0, params.columnCount);
+    const rowCount = Math.max(grid?.rowCount ?? 0, params.rowCount);
+    if (columnCount === grid?.columnCount && rowCount === grid?.rowCount) return;
+
+    await this.sendRequests([
+      { updateSheetProperties: { properties: { sheetId: params.sheetId, gridProperties: { columnCount, rowCount } }, fields: 'gridProperties.columnCount,gridProperties.rowCount' } },
+    ]);
   }
 
   private async readTabIds(): Promise<Map<string, number>> {

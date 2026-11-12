@@ -102,7 +102,8 @@ export function buildShiftDays(params: BuildShiftDaysParams): ShiftDay[] {
     };
   });
 
+  const firstDayKey = params.shift.firstDayKey ?? '';
   return shiftDays
-    .filter((day) => day.managers.length > 0)
+    .filter((day) => day.managers.length > 0 && day.dayKey >= firstDayKey)
     .sort((first, second) => second.dayKey.localeCompare(first.dayKey));
 }

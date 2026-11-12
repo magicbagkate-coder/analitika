@@ -55,6 +55,20 @@ describe('buildShiftDays', () => {
     expect(days[0].managers.map((manager) => manager.managerName)).toEqual(['Попович Наталія']);
   });
 
+  it('leaves out the days before a new shift started', () => {
+    const days = buildShiftDays({
+      shift: { ...SHIFT, firstDayKey: '2026-11-11' },
+      scores: [
+        score({ managers: ['Марія Лисенко'], value: 5, at: '2026-11-10T14:00:00.000Z' }),
+        score({ managers: ['Марія Лисенко'], value: 3, at: '2026-11-11T14:00:00.000Z' }),
+      ],
+      speeds: [],
+      texts: [],
+    });
+
+    expect(days.map((day) => day.dayKey)).toEqual(['2026-11-11']);
+  });
+
   it('weights the speed by replies, per manager and for the whole shift', () => {
     const days = buildShiftDays({
       shift: SHIFT,

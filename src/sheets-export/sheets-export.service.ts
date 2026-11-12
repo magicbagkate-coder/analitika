@@ -47,7 +47,7 @@ export class SheetsExportService {
     for (const shift of SHIFT_ROSTERS) {
       const sheetId = tabIds.get(shift.tabTitle) ?? 0;
       const layout = buildShiftTabLayout({ shift, days: buildShiftDays({ shift, scores, speeds, texts }) });
-      await this.sheetsClient.writeBlocks({ title: shift.tabTitle, blocks: layout.blocks });
+      await this.sheetsClient.writeBlocks({ sheetId, title: shift.tabTitle, blocks: layout.blocks });
       await this.sheetsClient.rebuildTab({ sheetId, requests: [...buildFormatRequests({ sheetId, layout }), ...buildChartRequests({ sheetId, layout })] });
     }
     this.logger.log(`Google Sheets updated: ${SHIFT_ROSTERS.length} shift tabs, ${scores.length} evaluations, ${texts.length} report texts`);

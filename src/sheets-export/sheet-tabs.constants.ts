@@ -1,10 +1,15 @@
 /** Tabs of the first spreadsheet version (2026-11-11), replaced by one tab per shift — removed on export. */
 export const RETIRED_TABS = ['Смены', 'Оценки менеджеров', 'Скорость ответа', 'Графики'];
 
-export const ROSTER_TITLE = 'Состав смены';
-export const SHIFT_PROBLEMS_LABEL = 'Проблемы смены';
-export const LOG_HEADER = ['Дата', 'Кто', 'Роль', 'Чатов', 'Средняя оценка', 'Скорость ответа, мин', 'Разбор'];
-export const LOG_COLUMN_WIDTHS = [80, 190, 140, 70, 110, 140, 620];
+export const TABLE_HEADER = ['Кто', 'Роль', 'Показатель'];
+export const SHIFT_GROUP_LABEL = 'Вся смена';
+export const SHIFT_METRICS = ['Проблемы смены', 'Чатов', 'Средняя оценка', 'Скорость ответа, мин'];
+export const MANAGER_METRICS = ['Чатов', 'Средняя оценка', 'Скорость ответа, мин', 'Разбор'];
+
+/** Pixel widths: who, role, metric, then every day column. */
+export const FIXED_COLUMN_WIDTHS = [190, 150, 180];
+export const DAY_COLUMN_WIDTH = 330;
+export const CHART_DATA_COLUMN_WIDTH = 110;
 
 export const CHART_DATA_TITLE = 'Данные для графиков';
 export const SHIFT_SCORE_TITLE = 'Оценка смены';

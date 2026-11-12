@@ -3,6 +3,8 @@ export type ShiftMember = { managerName: string; roleLabel: string };
 export type ShiftRoster = {
   shiftKey: string;
   tabTitle: string;
+  /** "YYYY-MM-DD" (Kyiv) of the shift's first day — earlier days are left out of its tab; omitted for no limit. */
+  firstDayKey?: string;
   members: ShiftMember[];
 };
 
@@ -35,6 +37,8 @@ export const SHIFT_ROSTERS: ShiftRoster[] = [
   {
     shiftKey: 'shift-3',
     tabTitle: 'Смена 3 — Алина',
+    // A new shift (owner, 2026-11-12): its history starts with its first day, 11.11.
+    firstDayKey: '2026-11-11',
     members: [
       { managerName: 'Никольчева Аліна', roleLabel: 'Старшая смены' },
       { managerName: 'Ганна Кірієнко', roleLabel: 'Старший менеджер' },
