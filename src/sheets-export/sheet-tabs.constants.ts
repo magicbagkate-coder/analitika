@@ -9,9 +9,8 @@ export const MANAGER_METRICS = ['Чатов', 'Средняя оценка', 'С
 /** Pixel widths: who, role, metric, then every day column. */
 export const FIXED_COLUMN_WIDTHS = [190, 150, 180];
 export const DAY_COLUMN_WIDTH = 330;
-export const CHART_DATA_COLUMN_WIDTH = 110;
 
-export const CHART_DATA_TITLE = 'Данные для графиков';
+export const SHIFT_TOTALS_DATA_TITLE = 'Оценка и скорость всей смены';
 export const SHIFT_SCORE_TITLE = 'Оценка смены';
 export const SHIFT_SPEED_TITLE = 'Скорость смены, мин';
 export const DAY_TITLE = 'Дата';
@@ -19,3 +18,11 @@ export const DAY_TITLE = 'Дата';
 export const SHIFT_SCORE_CHART_TITLE = 'Средняя оценка смены по дням';
 export const MANAGER_SCORE_CHART_TITLE = 'Средняя оценка менеджеров по дням';
 export const MANAGER_SPEED_CHART_TITLE = 'Скорость ответа менеджеров, минут';
+
+// Owner's request (2026-11-12): charts four times the first size (twice as wide and twice as tall),
+// one under another below the table.
+export const CHART_WIDTH_PIXELS = 1040;
+export const CHART_HEIGHT_PIXELS = 660;
+export const CHART_GAP_PIXELS = 30;
+export const CHART_COUNT = 3;
+export const DEFAULT_ROW_HEIGHT = 21;
