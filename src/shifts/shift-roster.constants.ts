@@ -1,3 +1,6 @@
+/** Touch managers (касатели) — kept in the table, left out of the charts (owner, 2026-11-12). */
+export const TOUCH_ROLE_LABEL = 'Касания';
+
 export type ShiftMember = { managerName: string; roleLabel: string };
 
 export type ShiftRoster = {
@@ -20,7 +23,7 @@ export const SHIFT_ROSTERS: ShiftRoster[] = [
     members: [
       { managerName: 'Бурнацева Ольга', roleLabel: 'Старшая смены' },
       { managerName: 'Віолетта Бабак', roleLabel: 'Старший менеджер' },
-      { managerName: 'Ольга Кошельнюк', roleLabel: 'Касания' },
+      { managerName: 'Ольга Кошельнюк', roleLabel: TOUCH_ROLE_LABEL },
       { managerName: 'Катерина Багель', roleLabel: 'Младший менеджер' },
     ],
   },
@@ -31,7 +34,7 @@ export const SHIFT_ROSTERS: ShiftRoster[] = [
       { managerName: 'Попович Наталія', roleLabel: 'Старшая смены' },
       { managerName: 'Офіленко Євгенія', roleLabel: 'Старший менеджер' },
       { managerName: 'Марія Лисенко', roleLabel: 'Младший менеджер' },
-      { managerName: 'Анастасія Корєшкова', roleLabel: 'Касания' },
+      { managerName: 'Анастасія Корєшкова', roleLabel: TOUCH_ROLE_LABEL },
     ],
   },
   {
@@ -43,7 +46,7 @@ export const SHIFT_ROSTERS: ShiftRoster[] = [
       { managerName: 'Никольчева Аліна', roleLabel: 'Старшая смены' },
       { managerName: 'Ганна Кірієнко', roleLabel: 'Старший менеджер' },
       { managerName: 'Інесса Поліщук', roleLabel: 'Младший менеджер' },
-      { managerName: 'Ілона Бабанова', roleLabel: 'Касания' },
+      { managerName: 'Ілона Бабанова', roleLabel: TOUCH_ROLE_LABEL },
     ],
   },
 ];

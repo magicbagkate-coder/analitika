@@ -104,11 +104,15 @@ export function buildFormatRequests(params: { sheetId: number; layout: ShiftTabL
     ...FIXED_COLUMN_WIDTHS.map((pixelSize, index) => columnWidth({ sheetId, startIndex: index, endIndex: index + 1, pixelSize })),
     columnWidth({ sheetId, startIndex: FIXED_COLUMNS, endIndex: layout.tableEndColumn, pixelSize: DAY_COLUMN_WIDTH }),
     columnWidth({ sheetId, startIndex: layout.chartData.firstColumn, endIndex: layout.chartData.endColumn, pixelSize: CHART_DATA_COLUMN_WIDTH }),
-    formatArea({
-      sheetId,
-      area: table,
-      format: { horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP', textFormat: { fontSize: BODY_FONT_SIZE } },
-    }),
+    // The whole tab is centred, the chart data on the right included (owner, 2026-11-12).
+    {
+      repeatCell: {
+        range: { sheetId },
+        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', textFormat: { fontSize: BODY_FONT_SIZE } } },
+        fields: 'userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.textFormat',
+      },
+    },
+    formatArea({ sheetId, area: table, format: { wrapStrategy: 'WRAP' } }),
     formatArea({ sheetId, area: { ...table, endRow: 1 }, format: { textFormat: { ...BOLD_TEXT, fontSize: 14 } } }),
     formatArea({ sheetId, area: { ...table, startRow: layout.headerRow, endRow: layout.headerRow + 1 }, format: { backgroundColor: HEADER_BACKGROUND, textFormat: BOLD_TEXT } }),
     formatArea({ sheetId, area: { ...table, startRow: layout.headerRow + 1, endColumn: 1 }, format: { textFormat: BOLD_TEXT } }),

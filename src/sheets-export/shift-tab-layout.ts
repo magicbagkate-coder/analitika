@@ -8,7 +8,7 @@ import {
   SHIFT_SPEED_TITLE,
   TABLE_HEADER,
 } from './sheet-tabs.constants';
-import type { ShiftRoster } from '../shifts/shift-roster.constants';
+import { TOUCH_ROLE_LABEL, type ShiftRoster } from '../shifts/shift-roster.constants';
 import type { ManagerDay, SheetBlock, SheetValue, ShiftDay } from './sheets-export.types';
 
 /** Columns before the first day: who, role, metric. */
@@ -91,7 +91,7 @@ function managerRows(params: { days: ShiftDay[]; managerName: string; roleLabel:
 /** Three tables for the charts, oldest day first, placed to the right of the main table. */
 function buildChartBlocks(params: { shift: ShiftRoster; days: ShiftDay[]; firstColumn: number }): { blocks: SheetBlock[]; placement: ChartDataPlacement } {
   const ascending = [...params.days].reverse();
-  const names = params.shift.members.map((member) => member.managerName);
+  const names = params.shift.members.filter((member) => member.roleLabel !== TOUCH_ROLE_LABEL).map((member) => member.managerName);
   const headerRow = HEADER_ROW;
   const valueOf = (day: ShiftDay, name: string, field: 'averageScore' | 'averageMinutes'): SheetValue => blankIfNull(managerOf(day, name)?.[field] ?? null);
 
