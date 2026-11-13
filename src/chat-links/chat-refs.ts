@@ -1,6 +1,8 @@
 import { CHAT_MARKER_PATTERN } from './chat-link.constants';
 
-const CHAT_NUMBER_GROUP_PATTERN = /\[#(\d+(?:\s*,\s*#?\d+)*)\]/g;
+// Claude sometimes adds words inside the bracket ("[#27, через общий контекст]"); the group is still consumed.
+const CHAT_NUMBER_GROUP_PATTERN = /\[#\d[^\]]*\]/g;
+const CHAT_NUMBER_TOKEN_PATTERN = /^#?(\d+)$/;
 
 export type NumberedChatTexts = { texts: string[]; chatIds: string[] };
 
@@ -30,8 +32,9 @@ export function numberChatMarkers(texts: string[]): NumberedChatTexts {
  */
 export function resolveChatNumbers(params: { text: string; chatIds: string[] }): string {
   const shown = new Set<string>();
-  const resolved = params.text.replace(CHAT_NUMBER_GROUP_PATTERN, (_group, numbers: string) => {
-    const chatIds = [...numbers.matchAll(/\d+/g)].map((match) => params.chatIds[Number(match[0]) - 1]).filter((chatId) => chatId !== undefined && !shown.has(chatId));
+  const resolved = params.text.replace(CHAT_NUMBER_GROUP_PATTERN, (group) => {
+    const numbers = group.slice(1, -1).split(',').map((token) => CHAT_NUMBER_TOKEN_PATTERN.exec(token.trim())?.[1]);
+    const chatIds = numbers.map((number) => (number ? params.chatIds[Number(number) - 1] : undefined)).filter((chatId): chatId is string => chatId !== undefined && !shown.has(chatId));
     chatIds.forEach((chatId) => shown.add(chatId));
     return [...new Set(chatIds)].map(buildChatMarker).join(' ');
   });

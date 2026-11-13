@@ -52,7 +52,7 @@ export class ClaudeManagerSummaryService {
     const sections = managers.map((manager) => {
       const role = getManagerRole(manager.managerName) ?? 'роль неизвестна';
       const lines = manager.entries.map((entry, index) => `- [#${index + 1}, ${this.describeSource(entry.source)}, ${entry.score}/5]: ${entry.note}`);
-      return `### ${manager.managerName} (${role})\n${lines.join('\n')}`;
+      return `### ${manager.managerName}\nРоль: ${role}\n${lines.join('\n')}`;
     });
 
     return [
@@ -107,7 +107,7 @@ export class ClaudeManagerSummaryService {
             items: {
               type: 'object',
               properties: {
-                managerName: { type: 'string' },
+                managerName: { type: 'string', description: 'Имя менеджера ровно как в заголовке ###, без роли и скобок.' },
                 score: { type: 'integer', minimum: 1, maximum: 5, description: 'Итоговая оценка менеджера за этот прогон, 1-5.' },
                 recurringIssues: {
                   type: 'array',
@@ -151,10 +151,19 @@ export class ClaudeManagerSummaryService {
     return valid.map((characteristic) => this.withChatMarkers(characteristic, managers));
   }
 
-  /** `[#n]` numbers in the issues are valid only for that manager's own chats; they turn into chat markers. */
+  /**
+   * Claude once returned "Name (role)" instead of the bare name (2026-11-13) and the spreadsheet, which looks
+   * managers up by name, showed only scores. The name is restored from the list we sent; `[#n]` numbers in
+   * the issues are valid only for that manager's own chats and turn into chat markers.
+   */
   private withChatMarkers(characteristic: ManagerCharacteristic, managers: ManagerRunNotes[]): ManagerCharacteristic {
-    const chatIds = managers.find((manager) => manager.managerName === characteristic.managerName)?.entries.map((entry) => entry.chatId) ?? [];
-    return { ...characteristic, recurringIssues: characteristic.recurringIssues.map((issue) => resolveChatNumbers({ text: issue, chatIds })) };
+    const known = managers.find((manager) => characteristic.managerName === manager.managerName || characteristic.managerName.startsWith(`${manager.managerName} (`));
+    const chatIds = known?.entries.map((entry) => entry.chatId) ?? [];
+    return {
+      ...characteristic,
+      managerName: known?.managerName ?? characteristic.managerName,
+      recurringIssues: characteristic.recurringIssues.map((issue) => resolveChatNumbers({ text: issue, chatIds })),
+    };
   }
 
   /**

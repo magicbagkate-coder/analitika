@@ -10,6 +10,10 @@ describe('resolveChatNumbers', () => {
     expect(text).toBe(`Задержка 51 минута ${buildChatMarker(FIRST_CHAT)} ${buildChatMarker(SECOND_CHAT)}`);
   });
 
+  it('still finds the number when Claude adds words in the bracket', () => {
+    expect(resolveChatNumbers({ text: 'Задержка [#2, через общий контекст]', chatIds: [FIRST_CHAT, SECOND_CHAT] })).toBe(`Задержка ${buildChatMarker(SECOND_CHAT)}`);
+  });
+
   it('drops a number that is not in the list instead of linking someone else\'s chat', () => {
     expect(resolveChatNumbers({ text: 'Не ответила [#7]', chatIds: [FIRST_CHAT] })).toBe('Не ответила');
   });
