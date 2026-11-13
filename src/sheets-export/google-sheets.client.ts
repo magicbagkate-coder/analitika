@@ -1,6 +1,7 @@
 import { auth, sheets, type sheets_v4 } from '@googleapis/sheets';
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
+import { buildClearLinkRequest, buildLinkRequests, extractCellLinks } from './cell-links';
 import type { SheetBlock } from './sheets-export.types';
 
 const SPREADSHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
@@ -47,9 +48,12 @@ export class GoogleSheetsClient {
     await this.ensureGridSize({ sheetId: params.sheetId, columnCount, rowCount });
 
     const range = `'${params.title}'`;
+    const { blocks, linkedCells } = extractCellLinks(params.blocks);
     await this.getApi().spreadsheets.values.clear({ spreadsheetId: this.getSpreadsheetId(), range });
-    const data = params.blocks.map((block) => ({ range: `${range}!${columnLetters(block.startColumn)}${block.startRow + 1}`, values: block.values }));
+    await this.sendRequests([buildClearLinkRequest(params.sheetId)]);
+    const data = blocks.map((block) => ({ range: `${range}!${columnLetters(block.startColumn)}${block.startRow + 1}`, values: block.values }));
     await this.getApi().spreadsheets.values.batchUpdate({ spreadsheetId: this.getSpreadsheetId(), requestBody: { valueInputOption: 'RAW', data } });
+    await this.sendRequests(buildLinkRequests({ sheetId: params.sheetId, linkedCells }));
   }
 
   /** Charts keep the row range they were created with, so the tab's charts are dropped and drawn again with the new requests. */

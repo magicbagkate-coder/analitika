@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { createAnthropicClient, withHardTimeout } from './anthropic-client';
+import { numberChatMarkers, resolveChatNumbers } from '../chat-links/chat-refs';
 
 const SHIFT_PROBLEMS_TOOL_NAME = 'submit_shift_problems';
 
@@ -28,18 +29,37 @@ export class ClaudeShiftProblemsService {
     const shiftsWithFacts = shifts.filter((shift) => shift.managers.some((manager) => manager.recurringIssues.length > 0));
     if (shiftsWithFacts.length === 0) return [];
 
+    const numbered = shiftsWithFacts.map((shift) => this.numberShiftChats(shift));
     const response = await withHardTimeout(
       this.client.messages.create({
         model: this.appConfig.getAnthropicModel(),
         max_tokens: 4096,
         tools: [this.buildTool()],
         tool_choice: { type: 'tool', name: SHIFT_PROBLEMS_TOOL_NAME },
-        messages: [{ role: 'user', content: this.buildPrompt(shiftsWithFacts) }],
+        messages: [{ role: 'user', content: this.buildPrompt(numbered.map((item) => item.shift)) }],
       }),
       'ClaudeShiftProblemsService.synthesizeShiftProblems',
     );
 
-    return this.extractResult(response, shiftsWithFacts);
+    const problems = this.extractResult(response, shiftsWithFacts);
+    return problems.map((shift) => this.withChatMarkers(shift, numbered));
+  }
+
+  /** The chat markers in a shift's facts become short numbers for Claude; `chatIds` turns them back. */
+  private numberShiftChats(shift: ShiftFacts): { shift: ShiftFacts; chatIds: string[] } {
+    const { texts, chatIds } = numberChatMarkers(shift.managers.flatMap((manager) => manager.recurringIssues));
+    let offset = 0;
+    const managers = shift.managers.map((manager) => {
+      const recurringIssues = texts.slice(offset, offset + manager.recurringIssues.length);
+      offset += manager.recurringIssues.length;
+      return { ...manager, recurringIssues };
+    });
+    return { shift: { ...shift, managers }, chatIds };
+  }
+
+  private withChatMarkers(problems: ShiftProblems, numbered: { shift: ShiftFacts; chatIds: string[] }[]): ShiftProblems {
+    const chatIds = numbered.find((item) => item.shift.shiftKey === problems.shiftKey)?.chatIds ?? [];
+    return { ...problems, problems: problems.problems.map((problem) => resolveChatNumbers({ text: problem, chatIds })) };
   }
 
   private buildPrompt(shifts: ShiftFacts[]): string {
@@ -58,6 +78,8 @@ export class ClaudeShiftProblemsService {
       'одну-две самые заметные ошибки с именем менеджера. Используй ТОЛЬКО факты из списка, ничего',
       'не додумывай и не добавляй. Каждый пункт — одна короткая фраза на русском, с именами',
       'менеджеров. Если у смены замечаний нет — пустой массив.',
+      'Факты содержат номера чатов вида [#3]. Перенеси номера тех фактов, на которых держится пункт, в',
+      'конец пункта: «… [#2] [#7]». Только номера из списка этой смены, выдуманные номера недопустимы.',
       '',
       sections.join('\n\n'),
     ].join('\n');

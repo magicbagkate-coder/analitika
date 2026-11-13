@@ -2,12 +2,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { createAnthropicClient, withHardTimeout } from './anthropic-client';
+import { resolveChatNumbers } from '../chat-links/chat-refs';
 import { getManagerRole } from '../evaluation/manager-roles.constants';
 import type { EvaluationSource } from '../evaluation-history/evaluation-history.types';
 
 const CHARACTERISTICS_TOOL_NAME = 'submit_manager_characteristics';
 
-export type ManagerRunEntry = { source: EvaluationSource; score: number; note: string };
+export type ManagerRunEntry = { chatId: string; source: EvaluationSource; score: number; note: string };
 export type ManagerRunNotes = { managerName: string; entries: ManagerRunEntry[] };
 export type ManagerCharacteristic = { managerName: string; score: number; recurringIssues: string[] };
 
@@ -44,13 +45,13 @@ export class ClaudeManagerSummaryService {
       'ClaudeManagerSummaryService.synthesizeCharacteristics',
     );
 
-    return this.extractResult(response);
+    return this.extractResult(response, managers);
   }
 
   private buildPrompt(managers: ManagerRunNotes[]): string {
     const sections = managers.map((manager) => {
       const role = getManagerRole(manager.managerName) ?? 'роль неизвестна';
-      const lines = manager.entries.map((entry) => `- [${this.describeSource(entry.source)}, ${entry.score}/5]: ${entry.note}`);
+      const lines = manager.entries.map((entry, index) => `- [#${index + 1}, ${this.describeSource(entry.source)}, ${entry.score}/5]: ${entry.note}`);
       return `### ${manager.managerName} (${role})\n${lines.join('\n')}`;
     });
 
@@ -84,6 +85,9 @@ export class ClaudeManagerSummaryService {
       'или один значимый промах. На русском, без общих оценочных слов ("хорошо справляется",',
       '"работает нормально") — только конкретика (что, когда, в каком чате). Пустой список, если',
       'нечего конкретно отметить.',
+      '3. Каждая запись выше имеет номер вида [#3]. В конце КАЖДОГО факта укажи номера чатов, из которых',
+      'он взят, например «… [#2] [#5]». Только номера из списка ЭТОГО менеджера; номера других менеджеров',
+      'и выдуманные номера недопустимы. По этим номерам владелица откроет чат и проверит факт.',
     ].join('\n');
   }
 
@@ -122,7 +126,7 @@ export class ClaudeManagerSummaryService {
     };
   }
 
-  private extractResult(response: Anthropic.Message): ManagerCharacteristic[] {
+  private extractResult(response: Anthropic.Message, managers: ManagerRunNotes[]): ManagerCharacteristic[] {
     const toolUse = response.content.find((block) => block.type === 'tool_use');
     if (!toolUse || toolUse.type !== 'tool_use') {
       this.logger.warn(`No tool_use block in manager characteristics response (stop_reason: ${response.stop_reason})`);
@@ -144,7 +148,13 @@ export class ClaudeManagerSummaryService {
     if (valid.length < characteristics.length) {
       this.logger.warn(`Dropped ${characteristics.length - valid.length}/${characteristics.length} invalid manager characteristics`);
     }
-    return valid;
+    return valid.map((characteristic) => this.withChatMarkers(characteristic, managers));
+  }
+
+  /** `[#n]` numbers in the issues are valid only for that manager's own chats; they turn into chat markers. */
+  private withChatMarkers(characteristic: ManagerCharacteristic, managers: ManagerRunNotes[]): ManagerCharacteristic {
+    const chatIds = managers.find((manager) => manager.managerName === characteristic.managerName)?.entries.map((entry) => entry.chatId) ?? [];
+    return { ...characteristic, recurringIssues: characteristic.recurringIssues.map((issue) => resolveChatNumbers({ text: issue, chatIds })) };
   }
 
   /**

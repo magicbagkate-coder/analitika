@@ -58,7 +58,7 @@ export class ManagerCharacteristicsService {
       for (const rawManagerName of row.managerNames) {
         const managerName = getCanonicalManagerName(rawManagerName);
         const manager = byManager.get(managerName) ?? { managerName, entries: [] };
-        manager.entries.push({ source: row.source, score: row.score, note: row.note });
+        manager.entries.push({ chatId: row.chatId, source: row.source, score: row.score, note: row.note });
         byManager.set(managerName, manager);
       }
     }
