@@ -8,9 +8,9 @@ export function buildChatUrl(chatId: string): string {
   return `${SITNIKS_CHAT_URL_BASE}${chatId}`;
 }
 
-/** Telegram HTML: the text must already be escaped — the markers contain nothing that escaping changes. */
-export function renderTelegramLinks(escapedText: string): string {
-  return escapedText.replace(CHAT_MARKER_PATTERN, (_marker, chatId: string) => `<a href="${buildChatUrl(chatId)}">${CHAT_LINK_LABEL}</a>`);
+/** Telegram gets no links (owner's wish, 2026-11-13): the markers are removed and the text stays as it was. */
+export function stripChatMarkers(text: string): string {
+  return text.replace(CHAT_MARKER_PATTERN, '').replace(/ {2,}/g, ' ').trim();
 }
 
 /** Spreadsheet cell: markers become the plain label, and the label positions are returned for rich-text links. */

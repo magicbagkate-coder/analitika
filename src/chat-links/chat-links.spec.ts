@@ -1,4 +1,4 @@
-import { splitSheetLinks, renderTelegramLinks } from './chat-link-render';
+import { splitSheetLinks, stripChatMarkers } from './chat-link-render';
 import { buildChatMarker, numberChatMarkers, resolveChatNumbers } from './chat-refs';
 
 const FIRST_CHAT = '6aaa09fe47aa80b7b467f374';
@@ -28,11 +28,9 @@ describe('numberChatMarkers', () => {
   });
 });
 
-describe('renderTelegramLinks', () => {
-  it('writes the chat as an HTML link to the Sitniks dialog', () => {
-    expect(renderTelegramLinks(`Ошибка ${buildChatMarker(FIRST_CHAT)}`)).toBe(
-      `Ошибка <a href="https://web.sitniks.com/3911/chats/dialog/${FIRST_CHAT}">(чат)</a>`,
-    );
+describe('stripChatMarkers', () => {
+  it('leaves the plain text for Telegram, without any chat mark', () => {
+    expect(stripChatMarkers(`Ошибка ${buildChatMarker(FIRST_CHAT)} ${buildChatMarker(SECOND_CHAT)}`)).toBe('Ошибка');
   });
 });
 

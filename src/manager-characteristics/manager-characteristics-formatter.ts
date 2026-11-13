@@ -1,4 +1,4 @@
-import { renderTelegramLinks } from '../chat-links/chat-link-render';
+import { stripChatMarkers } from '../chat-links/chat-link-render';
 import { escapeHtml } from '../telegram/telegram-format';
 import type { ManagerCharacteristic } from '../claude/claude-manager-summary.service';
 
@@ -46,6 +46,6 @@ function formatOneManager(characteristic: ManagerCharacteristic): string {
   const header = `<b>${escapeHtml(characteristic.managerName)}</b> — ${characteristic.score}/5`;
   if (characteristic.recurringIssues.length === 0) return header;
 
-  const issueLines = characteristic.recurringIssues.map((issue) => `• ${renderTelegramLinks(escapeHtml(issue))}`);
+  const issueLines = characteristic.recurringIssues.map((issue) => `• ${escapeHtml(stripChatMarkers(issue))}`);
   return [header, ...issueLines].join('\n');
 }
