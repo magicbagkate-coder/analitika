@@ -7,12 +7,14 @@ import { ReportRunStatusService } from '../report-run-status/report-run-status.s
 import { SheetsExportService } from '../sheets-export/sheets-export.service';
 import { StatusReportService } from '../status-report/status-report.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { TrashStoriesService } from '../trash-stories/trash-stories.service';
 import { ReportSchedulerService } from './report-scheduler.service';
 
 describe('ReportSchedulerService.runBoth', () => {
   let service: ReportSchedulerService;
   let orderSuccessAnalysisService: { runAnalysis: jest.Mock };
   let statusReportService: { runReport: jest.Mock };
+  let trashStoriesService: { runStories: jest.Mock };
   let managerCharacteristicsService: { runSummary: jest.Mock };
   let telegramService: { sendMessage: jest.Mock };
   let reportRunStatusService: { start: jest.Mock; finish: jest.Mock };
@@ -31,6 +33,11 @@ describe('ReportSchedulerService.runBoth', () => {
     statusReportService = {
       runReport: jest.fn().mockImplementation(async () => {
         callOrder.push('status-report');
+      }),
+    };
+    trashStoriesService = {
+      runStories: jest.fn().mockImplementation(async () => {
+        callOrder.push('trash-stories');
       }),
     };
     managerCharacteristicsService = {
@@ -54,6 +61,7 @@ describe('ReportSchedulerService.runBoth', () => {
         ReportSchedulerService,
         { provide: OrderSuccessAnalysisService, useValue: orderSuccessAnalysisService },
         { provide: StatusReportService, useValue: statusReportService },
+        { provide: TrashStoriesService, useValue: trashStoriesService },
         { provide: ManagerCharacteristicsService, useValue: managerCharacteristicsService },
         { provide: TelegramService, useValue: telegramService },
         { provide: ReportRunStatusService, useValue: reportRunStatusService },
@@ -65,15 +73,15 @@ describe('ReportSchedulerService.runBoth', () => {
     service = module.get(ReportSchedulerService);
   });
 
-  it('runs the three steps strictly in sequence: order-success, then status-report, then manager-characteristics', async () => {
+  it('runs the steps strictly in sequence: order-success, status-report, trash-stories, then manager-characteristics', async () => {
     await service.runBoth();
-    expect(callOrder.slice(0, 3)).toEqual(['order-success', 'status-report', 'manager-characteristics']);
+    expect(callOrder.slice(0, 4)).toEqual(['order-success', 'status-report', 'trash-stories', 'manager-characteristics']);
   });
 
   it('saves reply times only after the whole report is out, as the very last thing', async () => {
     await service.runBoth();
 
-    expect(callOrder).toEqual(['order-success', 'status-report', 'manager-characteristics', 'reply-times-flush']);
+    expect(callOrder).toEqual(['order-success', 'status-report', 'trash-stories', 'manager-characteristics', 'reply-times-flush']);
     const sentTexts = telegramService.sendMessage.mock.calls.map(([text]) => text);
     expect(sentTexts[sentTexts.length - 1]).toContain('Отчёт полностью сформирован');
   });

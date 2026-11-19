@@ -7,12 +7,14 @@ import { ReportRunStatusModule } from '../report-run-status/report-run-status.mo
 import { SheetsExportModule } from '../sheets-export/sheets-export.module';
 import { StatusReportModule } from '../status-report/status-report.module';
 import { TelegramModule } from '../telegram/telegram.module';
+import { TrashStoriesModule } from '../trash-stories/trash-stories.module';
 import { ReportSchedulerService } from './report-scheduler.service';
 
 @Module({
   imports: [
     OrderSuccessAnalysisModule,
     StatusReportModule,
+    TrashStoriesModule,
     ManagerCharacteristicsModule,
     TelegramModule,
     ReportRunStatusModule,

@@ -9,6 +9,31 @@ export function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Conservative margin under Telegram's hard 4096-char cap — leaves room for the title/emoji
+// overhead so a chunk never needs mid-block truncation (which would cut an HTML tag in half and
+// get the whole message rejected, see the 2026-09-16 incident this guards against).
+const TELEGRAM_MESSAGE_LIMIT = 3500;
+
+/** Packs titled blocks into as few messages as fit, splitting only at block boundaries (never mid-HTML). */
+export function chunkIntoMessages(title: string, blocks: string[]): string[] {
+  const messages: string[] = [];
+  let current: string[] = [title];
+  let currentLength = title.length;
+
+  for (const block of blocks) {
+    if (currentLength + block.length + 2 > TELEGRAM_MESSAGE_LIMIT && current.length > 1) {
+      messages.push(current.join('\n\n'));
+      current = [];
+      currentLength = 0;
+    }
+    current.push(block);
+    currentLength += block.length + 2;
+  }
+  if (current.length > 0) messages.push(current.join('\n\n'));
+
+  return messages;
+}
+
 /** "Молодший / Касатель" — chronological, or "менеджер невідомий" if Sitniks gave no names at all. */
 export function formatManagerNames(managerNames: string[]): string {
   if (managerNames.length === 0) return 'менеджер невідомий';

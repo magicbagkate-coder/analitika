@@ -13,6 +13,7 @@ import { SheetsExportService } from '../sheets-export/sheets-export.service';
 import { REPORT_TIMES } from '../status-report/status-report.constants';
 import { StatusReportService } from '../status-report/status-report.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { TrashStoriesService } from '../trash-stories/trash-stories.service';
 
 const CHECK_INTERVAL_MS = 60 * 1000;
 const PROGRESS_PING_INTERVAL_MS = 60 * 60 * 1000;
@@ -39,6 +40,7 @@ export class ReportSchedulerService implements OnModuleInit {
   constructor(
     private readonly orderSuccessAnalysisService: OrderSuccessAnalysisService,
     private readonly statusReportService: StatusReportService,
+    private readonly trashStoriesService: TrashStoriesService,
     private readonly managerCharacteristicsService: ManagerCharacteristicsService,
     private readonly telegramService: TelegramService,
     private readonly reportRunStatusService: ReportRunStatusService,
@@ -70,7 +72,7 @@ export class ReportSchedulerService implements OnModuleInit {
     // query (findSince) picks up every row either one writes during this run, from both statuses.
     const runStartedAt = new Date();
     this.reportRunStatusService.start();
-    await this.trySend('🔄<b>Начинаем формирование отчёта</b> (Замовлення створено → Вибір товару → Характеристика менеджерів)...');
+    await this.trySend('🔄<b>Начинаем формирование отчёта</b> (Замовлення створено → Вибір товару → Трэш истории → Характеристика менеджерів)...');
 
     const progressTimer = setInterval(() => {
       this.sendProgressPing(runStartedAt).catch((error) => this.logger.warn(`Progress ping failed: ${(error as Error).message}`));
@@ -80,6 +82,7 @@ export class ReportSchedulerService implements OnModuleInit {
     try {
       await runWithWatchdog(this.orderSuccessAnalysisService.runAnalysis(), 'Анализ "Замовлення створено"', this.telegramService, this.logger);
       await runWithWatchdog(this.statusReportService.runReport(), 'Отчёт "Вибір товару"', this.telegramService, this.logger);
+      await runWithWatchdog(this.trashStoriesService.runStories(runStartedAt), 'Трэш истории', this.telegramService, this.logger);
       await runWithWatchdog(
         this.managerCharacteristicsService.runSummary(runStartedAt),
         'Характеристика менеджеров',
