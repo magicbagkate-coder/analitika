@@ -14,6 +14,16 @@ describe('resolveChatNumbers', () => {
     expect(resolveChatNumbers({ text: 'Задержка [#2, через общий контекст]', chatIds: [FIRST_CHAT, SECOND_CHAT] })).toBe(`Задержка ${buildChatMarker(SECOND_CHAT)}`);
   });
 
+  it('links numbers written in prose without brackets: "в чате #2", "(#1, #2)", "#1 и #2"', () => {
+    const chatIds = [FIRST_CHAT, SECOND_CHAT];
+    const first = buildChatMarker(FIRST_CHAT);
+    const second = buildChatMarker(SECOND_CHAT);
+
+    expect(resolveChatNumbers({ text: 'Задержка 70 минут в чате #2', chatIds })).toBe(`Задержка 70 минут в чате ${second}`);
+    expect(resolveChatNumbers({ text: 'в нескольких чатах (#1, #2)', chatIds })).toBe(`в нескольких чатах ${first} ${second}`);
+    expect(resolveChatNumbers({ text: 'в чатах #1 и #2', chatIds })).toBe(`в чатах ${first} ${second}`);
+  });
+
   it('drops a number that is not in the list instead of linking someone else\'s chat', () => {
     expect(resolveChatNumbers({ text: 'Не ответила [#7]', chatIds: [FIRST_CHAT] })).toBe('Не ответила');
   });
