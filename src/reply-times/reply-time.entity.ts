@@ -31,7 +31,7 @@ export class ReplyTimeEntity {
   @Column({ type: 'timestamp' })
   repliedAt!: Date;
 
-  /** Open-hours minutes the client waited (00:00-08:00 Kyiv excluded), fractional. */
+  /** Open-hours minutes the client waited (00:00-09:00 Kyiv excluded; rows saved before 2026-11-19 excluded only 00:00-08:00), fractional. */
   @Column({ type: 'float' })
   minutes!: number;
 

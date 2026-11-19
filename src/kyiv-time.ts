@@ -22,7 +22,7 @@ export function getKyivHourMinute(date: Date = new Date()): { hour: number; minu
 
 /**
  * The UTC instant of 00:00 Kyiv time on the same Kyiv calendar day as `date` — lets callers walk
- * day-by-day in Kyiv local time (see response-time.ts, which excludes the 00:00-08:00 closed window
+ * day-by-day in Kyiv local time (see response-time.ts, which excludes the 00:00-09:00 window
  * from elapsed time) without assuming a fixed UTC offset. The offset is derived fresh from `date`
  * itself, so it stays correct across whatever DST-style transition Kyiv observes in a given year.
  */

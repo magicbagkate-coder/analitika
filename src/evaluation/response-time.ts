@@ -2,7 +2,9 @@ import { startOfKyivDayUtc } from '../kyiv-time';
 import { getCanonicalManagerName } from './manager-roles.constants';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
-const CLOSED_WINDOW_MINUTES = 8 * 60; // store is closed 00:00-08:00 Kyiv
+// Store is closed 00:00-08:00 Kyiv, and 08:00-09:00 is spent clearing the overnight leads — owner's
+// instruction (2026-11-19): that backlog hour must not count as managers' reply delay either.
+const CLOSED_WINDOW_MINUTES = 9 * 60;
 const DAY_MINUTES = 24 * 60;
 
 export type ResponseTimeStats = { intervalsMinutes: number[]; medianMinutes: number | null };
@@ -19,8 +21,8 @@ export type ReplyInterval = {
 const EMPTY_STATS: ResponseTimeStats = { intervalsMinutes: [], medianMinutes: null };
 
 /**
- * How long the client actually waited for each manager reply, in open-hours minutes — the store is
- * closed 00:00-08:00 Kyiv, and an overnight gap shouldn't read as an hours-long delay. Only counts
+ * How long the client actually waited for each manager reply, in open-hours minutes — 00:00-09:00 Kyiv
+ * is excluded (closed until 08:00, then the overnight backlog), so an overnight gap shouldn't read as an hours-long delay. Only counts
  * a real client message as the "trigger": an automated Instagram-bot auto-reply (see
  * transcript-formatter.ts for the same sentBy-matching trick) neither starts nor resets the wait,
  * since it isn't staff responding and the client didn't have to wait for it.
@@ -82,7 +84,7 @@ function median(values: number[]): number {
   return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
-/** Elapsed minutes between two instants, with each day's 00:00-08:00 Kyiv closed window subtracted. */
+/** Elapsed minutes between two instants, with each day's 00:00-09:00 Kyiv window subtracted. */
 function openMinutesBetween(start: Date, end: Date): number {
   if (end <= start) return 0;
 

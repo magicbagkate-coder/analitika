@@ -27,15 +27,20 @@ describe('calculateResponseTimes', () => {
     expect(calculateResponseTimes(messages)).toEqual({ intervalsMinutes: [5], medianMinutes: 5 });
   });
 
-  it('excludes the closed 00:00-08:00 Kyiv window from an overnight gap', () => {
-    const messages = [msg('2', 'mgr', 'Аня', '2026-09-19', 8, 5), msg('1', 'client', undefined, '2026-09-18', 23, 50)];
-    expect(calculateResponseTimes(messages)).toEqual({ intervalsMinutes: [15], medianMinutes: 15 });
+  it('excludes the 00:00-09:00 Kyiv window from an overnight gap', () => {
+    const messages = [msg('2', 'mgr', 'Аня', '2026-09-19', 9, 20), msg('1', 'client', undefined, '2026-09-18', 23, 50)];
+    expect(calculateResponseTimes(messages)).toEqual({ intervalsMinutes: [30], medianMinutes: 30 });
+  });
+
+  it('does not count the 08:00-09:00 backlog hour as a delay (2026-11-19)', () => {
+    const messages = [msg('2', 'mgr', 'Аня', '2026-09-19', 8, 40), msg('1', 'client', undefined, '2026-09-19', 2, 0)];
+    expect(calculateResponseTimes(messages)).toEqual({ intervalsMinutes: [0], medianMinutes: 0 });
   });
 
   it('excludes closed hours across a multi-day gap', () => {
-    // Monday 20:00 -> Wednesday 09:00: 4h (Mon) + 16h (Tue) + 1h (Wed) = 21h = 1260 min.
-    const messages = [msg('2', 'mgr', 'Аня', '2026-09-16', 9, 0), msg('1', 'client', undefined, '2026-09-14', 20, 0)];
-    expect(calculateResponseTimes(messages)).toEqual({ intervalsMinutes: [1260], medianMinutes: 1260 });
+    // Monday 20:00 -> Wednesday 10:00: 4h (Mon) + 15h (Tue) + 1h (Wed) = 20h = 1200 min.
+    const messages = [msg('2', 'mgr', 'Аня', '2026-09-16', 10, 0), msg('1', 'client', undefined, '2026-09-14', 20, 0)];
+    expect(calculateResponseTimes(messages)).toEqual({ intervalsMinutes: [1200], medianMinutes: 1200 });
   });
 
   it('counts a reply inside the same minute as 0, not as missing data (2026-09-18 bug)', () => {
