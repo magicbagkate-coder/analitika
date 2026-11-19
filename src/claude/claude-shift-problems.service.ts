@@ -121,13 +121,25 @@ export class ClaudeShiftProblemsService {
     }
 
     const input = toolUse.input as Partial<{ shifts: ShiftProblems[] }>;
-    if (!Array.isArray(input.shifts)) {
+    const shifts = Array.isArray(input.shifts) ? input.shifts : this.tryUnwrapStringified(input.shifts);
+    if (!shifts) {
       this.logger.warn(`Shift problems tool input had no array: ${JSON.stringify(toolUse.input).slice(0, 300)}`);
       return [];
     }
 
     const askedKeys = new Set(asked.map((shift) => shift.shiftKey));
-    return input.shifts.filter((shift) => this.isValid(shift) && askedKeys.has(shift.shiftKey));
+    return shifts.filter((shift) => this.isValid(shift) && askedKeys.has(shift.shiftKey));
+  }
+
+  /** Claude sometimes returns the whole object double-encoded as a JSON string under its own key (seen 2026-11-19). */
+  private tryUnwrapStringified(value: unknown): ShiftProblems[] | null {
+    if (typeof value !== 'string') return null;
+    try {
+      const parsed = JSON.parse(value) as Partial<{ shifts: ShiftProblems[] }>;
+      return Array.isArray(parsed.shifts) ? parsed.shifts : null;
+    } catch {
+      return null;
+    }
   }
 
   private isValid(shift: ShiftProblems): boolean {
