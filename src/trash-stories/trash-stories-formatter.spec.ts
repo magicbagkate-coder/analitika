@@ -27,6 +27,12 @@ describe('formatTrashStories', () => {
     expect(message).toContain('Вернула сумку с порезом');
   });
 
+  it('shows the chat ID under the client name, so the owner can find the chat (2026-11-20)', () => {
+    const [message] = formatTrashStories({ stories: [story], shiftLabel });
+
+    expect(message).toContain('ID чата: <code>c1</code>');
+  });
+
   it('escapes HTML in client names and summaries', () => {
     const [message] = formatTrashStories({ stories: [{ ...story, clientName: 'A&B', summary: 'цена < 100' }], shiftLabel });
 

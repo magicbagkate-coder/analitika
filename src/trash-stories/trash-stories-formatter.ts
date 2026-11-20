@@ -15,5 +15,5 @@ export function formatTrashStories(params: { stories: TrashStory[]; shiftLabel: 
 
 function formatOneStory(story: TrashStory): string {
   const header = `<b>${escapeHtml(story.clientName)}</b> — ${escapeHtml(story.category)} (${escapeHtml(story.status)})`;
-  return [header, escapeHtml(story.summary)].join('\n');
+  return [header, `ID чата: <code>${escapeHtml(story.chatId)}</code>`, escapeHtml(story.summary)].join('\n');
 }
