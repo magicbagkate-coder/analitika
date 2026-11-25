@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SitniksClientService } from '../sitniks-client/sitniks-client.service';
-import type { ListChatMessagesParams, ListChatMessagesResponse } from './sitniks-chat-messages.types';
+import type { ChatMessage, ListChatMessagesParams, ListChatMessagesResponse } from './sitniks-chat-messages.types';
 
 const INTERNAL_NOTE_SCOPE = 'internal_note';
 
@@ -17,5 +17,14 @@ export class SitniksChatMessagesService {
     const { chatId, ...query } = params;
     const response = await this.sitniksClient.get<ListChatMessagesResponse>(`/open-api/chats/${chatId}/messages`, query);
     return { ...response, data: response.data.filter((message) => message.messageScope !== INTERNAL_NOTE_SCOPE) };
+  }
+
+  /**
+   * The staff-only notes of a chat, newest first: the other half of the same endpoint. Managers leave the
+   * article of a touch video here (owner, 2026-11-25), so this is the one place that reads them on purpose.
+   */
+  async listInternalNotes(params: { chatId: string; limit?: number }): Promise<ChatMessage[]> {
+    const response = await this.sitniksClient.get<ListChatMessagesResponse>(`/open-api/chats/${params.chatId}/messages`, { limit: params.limit });
+    return response.data.filter((message) => message.messageScope === INTERNAL_NOTE_SCOPE);
   }
 }

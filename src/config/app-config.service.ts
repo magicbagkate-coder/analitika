@@ -34,6 +34,39 @@ export class AppConfigService {
     return this.requireEnv('TELEGRAM_CHAT_ID');
   }
 
+  /** The owner's private chat with the bot; falls back to the group so an error is never lost if it is unset. */
+  getTelegramOwnerChatId(): string {
+    return this.configService.get<string>('TELEGRAM_OWNER_CHAT_ID') || this.getTelegramChatId();
+  }
+
+  /**
+   * "off" (default): the touch bot does nothing at all. "dry-run": it reads chats and only describes to the
+   * owner what it WOULD do. "live": it really sends and closes chats. Owner's rule (2026-11-20): nothing goes
+   * to clients until she says «начали», so any other value than "live" or "dry-run" means "off".
+   */
+  getTouchMode(): 'off' | 'dry-run' | 'live' {
+    const mode = this.configService.get<string>('TOUCH_MODE');
+    return mode === 'live' || mode === 'dry-run' ? mode : 'off';
+  }
+
+  /** The status the touch bot works in; set to the test status to try it without touching real clients. */
+  getTouchTargetStatus(): string {
+    return this.configService.get<string>('TOUCH_TARGET_STATUS') || 'Вибір товару';
+  }
+
+  getTouchClosedStatus(): string {
+    return this.configService.get<string>('TOUCH_CLOSED_STATUS') || 'Завершено';
+  }
+
+  /** Minutes to wait after the bot first sees the client read a message (60 for real work, 1-2 for a test). */
+  getTouchWaitMinutes(): number {
+    return Number(this.configService.get<string>('TOUCH_WAIT_MINUTES', '60'));
+  }
+
+  getTouchVideoFolderId(): string | null {
+    return this.configService.get<string>('TOUCH_VIDEO_FOLDER_ID') || null;
+  }
+
   /** Optional: without both Google settings the spreadsheet export is simply switched off. */
   getGoogleSheetsId(): string | null {
     return this.configService.get<string>('GOOGLE_SHEETS_ID') || null;

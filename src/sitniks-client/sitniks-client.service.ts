@@ -43,6 +43,13 @@ export class SitniksClientService {
     return response.data;
   }
 
+  async patch<Response, Body>(path: string, body: Body): Promise<Response> {
+    const response = await retryOnRateLimit(() =>
+      firstValueFrom(this.httpService.patch<Response>(this.buildUrl(path), body, { headers: this.buildHeaders(), timeout: REQUEST_TIMEOUT_MS })),
+    );
+    return response.data;
+  }
+
   private buildUrl(path: string): string {
     return `${this.appConfig.getSitniksApiUrl()}${path}`;
   }

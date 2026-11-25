@@ -16,6 +16,7 @@ import { SitniksChatNotesModule } from './sitniks-chat-notes/sitniks-chat-notes.
 import { SitniksChatUpdateModule } from './sitniks-chat-update/sitniks-chat-update.module';
 import { SitniksManagersModule } from './sitniks-managers/sitniks-managers.module';
 import { StatusReportModule } from './status-report/status-report.module';
+import { TouchModule } from './touch/touch.module';
 
 // Развёрнуто в Docker (Dockerfile + docker-compose.yml), Postgres подключён через DatabaseModule
 // (2026-09-14) — провизия на будущее, entity под бизнес-данные пока не заведены.
@@ -71,6 +72,7 @@ import { StatusReportModule } from './status-report/status-report.module';
     ManagerTrendsModule,
     BulkTagStatusModule,
     ConflictWatcherModule,
+    TouchModule,
   ],
 })
 export class AppModule {}
