@@ -16,11 +16,12 @@ export const APPROVED_TOUCHES_REQUIRED = 30;
 export const TICK_INTERVAL_MS = 10 * 60 * 1000;
 export const CLOCK_CHECK_MS = 60 * 1000;
 export const DELAY_BETWEEN_REQUESTS_MS = 1500;
-/** Big videos reach Instagram slowly; the texts follow only after this pause so they do not overtake the video. */
-export const VIDEO_SETTLE_MS = 30_000;
-/** After a doubtful answer for the video the chat is checked this long, this often, before the touch is given up. */
+/** A touch should read like a person wrote it: the line, a moment, the video, a moment, the question. */
+export const DESCRIPTION_GAP_MS = 2000;
+export const QUESTION_GAP_MS = 3000;
+/** Sitniks creates the video message only after it has fetched the file; the chat is watched this long, this often. */
 export const VIDEO_CONFIRM_MS = 90_000;
-export const VIDEO_CONFIRM_INTERVAL_MS = 15_000;
+export const VIDEO_CONFIRM_INTERVAL_MS = 3000;
 export const CHAT_PAGE_SIZE = 50;
 export const NOTES_TO_READ = 30;
 export const MESSAGES_TO_READ = 50;

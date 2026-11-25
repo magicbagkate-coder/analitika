@@ -4,7 +4,7 @@ import { SitniksChatSendService } from '../sitniks-chat-send/sitniks-chat-send.s
 import { TelegramService } from '../telegram/telegram.service';
 import { TouchLogService } from '../touch-log/touch-log.service';
 import { buildVideoUrl } from '../touch-video-library/build-video-url';
-import { VIDEO_CONFIRM_INTERVAL_MS, VIDEO_CONFIRM_MS, VIDEO_SETTLE_MS } from './touch.constants';
+import { DESCRIPTION_GAP_MS, QUESTION_GAP_MS, VIDEO_CONFIRM_INTERVAL_MS, VIDEO_CONFIRM_MS } from './touch.constants';
 import { formatSendTrouble, formatTouchSent } from './touch-messages';
 import { hasAccountVideoSince } from './touch-video-confirm';
 import type { SendChatMessageResult } from '../sitniks-chat-send/sitniks-chat-send.types';
@@ -22,16 +22,19 @@ export type SendTouchParams = {
 };
 
 /**
- * Sends one approved touch: the video first, then — only if the video was accepted — the description and the
- * closing question. Owner's rules (2026-11-19/20): never retry after an error, never send the question without
- * the video, and any doubt about delivery goes to her private chat. The caller has already moved the row to
- * "sending", so two sends of the same touch cannot happen.
+ * Sends one approved touch the way a person would write it (owner, 2026-11-25): the line "found it, sending you
+ * the video" first, then the video, and the closing question the moment the video has appeared in the chat.
+ * Sitniks creates the video message only after it has downloaded the file, so the video lands a few seconds after
+ * the line and the question must wait for it — never a fixed pause. Owner's rules (2026-11-19/20): never retry
+ * anything, never send the question without the video, and any doubt goes to her private chat. The caller has
+ * already moved the row to "sending", so two sends of the same touch cannot happen.
  */
 @Injectable()
 export class TouchSenderService {
   private readonly logger = new Logger(TouchSenderService.name);
-  /** Public so a test does not have to wait half a minute. */
-  settleMs = VIDEO_SETTLE_MS;
+  /** Public so a test does not have to wait for real pauses. */
+  descriptionGapMs = DESCRIPTION_GAP_MS;
+  questionGapMs = QUESTION_GAP_MS;
   confirmMs = VIDEO_CONFIRM_MS;
   confirmIntervalMs = VIDEO_CONFIRM_INTERVAL_MS;
 
@@ -46,32 +49,33 @@ export class TouchSenderService {
     const { attempt } = params;
     if (!attempt.videoFileId || !attempt.descriptionText || !attempt.questionText) throw new Error(`Touch ${attempt.id} has no plan to send`);
 
+    const description = await this.sendStep({ chatId: attempt.chatId, name: 'описание', body: { text: attempt.descriptionText } });
+    if (description.result.outcome !== 'sent') return this.finishWithTrouble({ attempt, step: description });
+
+    await this.delay(this.descriptionGapMs);
     const startedAt = new Date(Date.now() - VIDEO_CLOCK_MARGIN_MS);
     const video = await this.sendStep({ chatId: attempt.chatId, name: 'видео', body: { attachments: [buildVideoUrl(attempt.videoFileId)] } });
-    if (video.result.outcome !== 'sent' && !(await this.videoReachedChat({ video, chatId: attempt.chatId, since: startedAt }))) return this.finishWithTrouble({ attempt, step: video, state: video.result.outcome === 'rejected' ? 'rejected' : 'uncertain' });
-
-    await this.delay(this.settleMs);
-    for (const [name, text] of [['описание', attempt.descriptionText], ['вопрос', attempt.questionText]]) {
-      const step = await this.sendStep({ chatId: attempt.chatId, name, body: { text } });
-      if (step.result.outcome !== 'sent') return this.finishWithTrouble({ attempt, step, state: 'uncertain' });
+    if (video.result.outcome === 'rejected' || !(await this.waitForVideo({ chatId: attempt.chatId, since: startedAt }))) {
+      return this.finishWithTrouble({ attempt, step: video });
     }
+
+    await this.delay(this.questionGapMs);
+    const question = await this.sendStep({ chatId: attempt.chatId, name: 'вопрос', body: { text: attempt.questionText } });
+    if (question.result.outcome !== 'sent') return this.finishWithTrouble({ attempt, step: question });
 
     await this.touchLogService.finishSend({ id: attempt.id, state: 'sent' });
     if (params.announce) await this.tryTell(formatTouchSent({ chatId: attempt.chatId, clientName: attempt.clientName, videoFileName: attempt.videoFileName ?? '' }));
   }
 
   /**
-   * A big video makes Sitniks answer 504 while it still downloads the file, and the message shows up in the chat a
-   * few seconds later (2026-11-25). After such a doubtful answer — never after a refusal — the chat is watched for
-   * a minute and a half; a video that appears counts as sent. Nothing is ever sent again here.
+   * The video shows up in the chat once Sitniks has fetched the file — a big one makes its answer a 504 first
+   * (2026-11-25). The chat is watched until it does; nothing is sent again here.
    */
-  private async videoReachedChat(params: { video: SendStep; chatId: string; since: Date }): Promise<boolean> {
-    if (params.video.result.outcome !== 'uncertain') return false;
-
+  private async waitForVideo(params: { chatId: string; since: Date }): Promise<boolean> {
     for (let waited = 0; waited < this.confirmMs; waited += this.confirmIntervalMs) {
-      await this.delay(this.confirmIntervalMs);
       const response = await this.sitniksChatMessagesService.listMessages({ chatId: params.chatId, limit: MESSAGES_TO_CHECK });
       if (hasAccountVideoSince({ messagesNewestFirst: response.data, since: params.since })) return true;
+      await this.delay(this.confirmIntervalMs);
     }
     return false;
   }
@@ -81,8 +85,13 @@ export class TouchSenderService {
     return { name: params.name, result };
   }
 
-  private async finishWithTrouble(params: { attempt: TouchAttemptEntity; step: SendStep; state: 'rejected' | 'uncertain' }): Promise<void> {
-    await this.touchLogService.finishSend({ id: params.attempt.id, state: params.state });
+  /**
+   * Only a refused first line means nothing reached the client. Whatever already went out cannot be taken back,
+   * so a half-sent touch is "uncertain" and never free to repeat.
+   */
+  private async finishWithTrouble(params: { attempt: TouchAttemptEntity; step: SendStep }): Promise<void> {
+    const nothingSent = params.step.name === 'описание' && params.step.result.outcome === 'rejected';
+    await this.touchLogService.finishSend({ id: params.attempt.id, state: nothingSent ? 'rejected' : 'uncertain' });
     await this.tryTell(
       formatSendTrouble({
         chatId: params.attempt.chatId,
