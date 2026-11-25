@@ -11,14 +11,25 @@ const ATTEMPT = {
   questionText: 'Чи хотіли б Ви обрати цю модель?',
 } as TouchAttemptEntity;
 
-function build(results: Array<'sent' | 'rejected' | 'uncertain'>): { service: TouchSenderService; send: jest.Mock; log: { finishSend: jest.Mock }; telegram: { sendOwnerMessage: jest.Mock } } {
+type Outcome = 'sent' | 'rejected' | 'uncertain';
+
+const MANAGER_MESSAGE = { id: 'm', sentBy: 'acc', managerName: 'Оля', text: 'x', createdAt: '2026-01-01T00:00:00.000Z', isViewedByUser: true };
+
+function freshVideo(): object {
+  return { id: 'v', sentBy: 'acc', text: '', createdAt: new Date(Date.now() + 1000).toISOString(), isViewedByUser: false, messageType: 'video' };
+}
+
+function build(results: Outcome[], chatMessages: object[] = []): { service: TouchSenderService; send: jest.Mock; log: { finishSend: jest.Mock }; telegram: { sendOwnerMessage: jest.Mock }; listMessages: jest.Mock } {
   const send = jest.fn();
   results.forEach((outcome) => send.mockResolvedValueOnce({ outcome, detail: outcome === 'sent' ? 'accepted' : '500' }));
   const log = { finishSend: jest.fn().mockResolvedValue(undefined) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
-  const service = new TouchSenderService({ sendMessage: send } as never, log as never, telegram as never);
+  const listMessages = jest.fn().mockResolvedValue({ data: chatMessages });
+  const service = new TouchSenderService({ sendMessage: send } as never, { listMessages } as never, log as never, telegram as never);
   service.settleMs = 0;
-  return { service, send, log, telegram };
+  service.confirmMs = 30;
+  service.confirmIntervalMs = 10;
+  return { service, send, log, telegram, listMessages };
 }
 
 describe('TouchSenderService', () => {
@@ -31,8 +42,28 @@ describe('TouchSenderService', () => {
     expect(log.finishSend).toHaveBeenCalledWith({ id: 'a1', state: 'sent' });
   });
 
+  it('goes on with the texts when a 504 video turns up in the chat (the big-file case)', async () => {
+    const { service, send, log } = build(['uncertain', 'sent', 'sent'], [freshVideo(), MANAGER_MESSAGE]);
+    await service.sendTouch({ attempt: ATTEMPT, announce: false });
+
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(log.finishSend).toHaveBeenCalledWith({ id: 'a1', state: 'sent' });
+  });
+
+  it('never sends the video again while it waits for the chat', async () => {
+    const { service, send } = build(['uncertain', 'sent', 'sent'], [freshVideo(), MANAGER_MESSAGE]);
+    await service.sendTouch({ attempt: ATTEMPT, announce: false });
+    expect(send.mock.calls.filter(([call]) => call.attachments).length).toBe(1);
+  });
+
+  it('does not wait for the chat after a refusal', async () => {
+    const { service, listMessages } = build(['rejected']);
+    await service.sendTouch({ attempt: ATTEMPT, announce: false });
+    expect(listMessages).not.toHaveBeenCalled();
+  });
+
   it('never sends the texts when the video was not accepted', async () => {
-    const { service, send, log, telegram } = build(['uncertain']);
+    const { service, send, log, telegram } = build(['uncertain'], [MANAGER_MESSAGE]);
     await service.sendTouch({ attempt: ATTEMPT, announce: false });
 
     expect(send).toHaveBeenCalledTimes(1);
