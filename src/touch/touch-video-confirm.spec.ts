@@ -30,8 +30,13 @@ describe('hasAccountVideoSince', () => {
     expect(hasAccountVideoSince({ messagesNewestFirst: [text, MANAGER], since: SINCE })).toBe(false);
   });
 
-  it('cannot tell the account apart when no manager ever wrote in the chat', () => {
+  it('still sees a new video in a chat where only the automatic bot has written', () => {
     const video = message({ at: '2026-11-25T14:43:07.000Z', type: 'video', sentBy: 'acc' });
-    expect(hasAccountVideoSince({ messagesNewestFirst: [video], since: SINCE })).toBe(false);
+    expect(hasAccountVideoSince({ messagesNewestFirst: [video], since: SINCE })).toBe(true);
+  });
+
+  it('does not count an old video in such a chat', () => {
+    const old = message({ at: '2026-11-20T10:28:05.000Z', type: 'video', sentBy: 'acc' });
+    expect(hasAccountVideoSince({ messagesNewestFirst: [old], since: SINCE })).toBe(false);
   });
 });
