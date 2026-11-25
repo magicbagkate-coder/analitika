@@ -19,6 +19,5 @@ export type TouchPlan = {
   article: string;
   videoFileId: string;
   videoFileName: string;
-  descriptionText: string;
-  questionText: string;
+  messageText: string;
 };

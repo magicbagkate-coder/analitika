@@ -122,8 +122,7 @@ export class TouchChatService {
           article: attempt.article ?? '',
           videoFileId: attempt.videoFileId ?? '',
           videoFileName: attempt.videoFileName ?? '',
-          descriptionText: attempt.descriptionText ?? '',
-          questionText: attempt.questionText ?? '',
+          messageText: attempt.messageText ?? '',
         },
       }),
     );

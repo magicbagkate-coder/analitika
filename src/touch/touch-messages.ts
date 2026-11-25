@@ -9,7 +9,7 @@ function chatLine(chat: ChatRef): string {
 }
 
 function planLines(plan: TouchPlan): string[] {
-  return [`1️⃣ ${escapeHtml(plan.descriptionText)}`, `2️⃣ 🎬 Видео: ${escapeHtml(plan.videoFileName)}`, `3️⃣ ${escapeHtml(plan.questionText)}`];
+  return [`1️⃣ 🎬 Видео: ${escapeHtml(plan.videoFileName)}`, `2️⃣ ${escapeHtml(plan.messageText)}`];
 }
 
 /** The owner approves each of the first touches by hand: this is what she sees above the two buttons. */

@@ -3,7 +3,7 @@ import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types'
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
 const CHAT: ChatListItem = { id: 'c1', status: 'Вибір товару', tags: [], lastMessageCreatedAt: '', userName: 'Іра' };
-const PLAN = { article: 'M1103', videoFileId: 'F1', videoFileName: 'M1103.mp4', descriptionText: 'd', questionText: 'q' };
+const PLAN = { article: 'M1103', videoFileId: 'F1', videoFileName: 'M1103.mp4', messageText: 'm' };
 
 function managerMessage(params: { viewed: boolean; minutesAgo: number }): ChatMessage {
   return { id: 'm1', sentBy: 'acc', managerName: 'Оля', text: 'x', createdAt: new Date(Date.now() - params.minutesAgo * 60_000).toISOString(), isViewedByUser: params.viewed };

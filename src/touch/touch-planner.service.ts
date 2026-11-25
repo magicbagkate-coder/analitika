@@ -18,7 +18,7 @@ export type PlanTouchParams = { chatId: string; clientName: string; messagesNewe
 
 /**
  * Turns a chat that is due for a touch into what would be sent: the article from the chat's internal notes,
- * the matching video from the folder, and the two texts Claude writes from the conversation.
+ * the matching video from the folder, and the one message Claude writes from the conversation.
  * Claude is asked last, so a chat with no article or no video costs nothing.
  */
 @Injectable()

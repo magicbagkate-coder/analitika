@@ -40,8 +40,7 @@ export class TouchApprovalService {
         article: attempt.article ?? '',
         videoFileId: attempt.videoFileId ?? '',
         videoFileName: attempt.videoFileName ?? '',
-        descriptionText: attempt.descriptionText ?? '',
-        questionText: attempt.questionText ?? '',
+        messageText: attempt.messageText ?? '',
       },
     });
     const approvalMessageId = await this.telegramOwnerBotService.sendWithButtons({

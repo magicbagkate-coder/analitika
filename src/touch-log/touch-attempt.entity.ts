@@ -42,11 +42,9 @@ export class TouchAttemptEntity {
   @Column({ type: 'varchar', nullable: true })
   videoFileName!: string | null;
 
+  /** The one message that follows the video: a warm line about the bag and the closing question. */
   @Column({ type: 'text', nullable: true })
-  descriptionText!: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  questionText!: string | null;
+  messageText!: string | null;
 
   /** Telegram message id of the approval request sent to the owner. */
   @Column({ type: 'int', nullable: true })
