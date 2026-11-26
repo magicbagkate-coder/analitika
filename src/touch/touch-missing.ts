@@ -14,5 +14,5 @@ export function hasMissingMedia(missing: MissingMedia): boolean {
 export function recordMissingMedia(params: { missing: MissingMedia; chat: ChatListItem; result: ProcessChatResult }): void {
   const { missing, chat, result } = params;
   if (result.noArticle) missing.noArticle.push({ chatId: chat.id, clientName: chat.userNickName ?? chat.userName });
-  if (result.noVideo) missing.noVideo.push(result.noVideo);
+  missing.noVideo.push(...result.noVideo);
 }

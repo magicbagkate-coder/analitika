@@ -3,7 +3,7 @@ import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types'
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
 const CHAT: ChatListItem = { id: 'c1', status: 'Вибір товару', tags: [], lastMessageCreatedAt: '', userName: 'Іра' };
-const PLAN = { article: 'M1103', videoFileId: 'F1', videoFileName: 'M1103.mp4', messageText: 'm' };
+const PLAN = { article: 'M1103', videos: [{ fileId: 'F1', fileName: 'M1103.mp4', article: 'M1103' }], messageText: 'm' };
 
 function managerMessage(params: { viewed: boolean; minutesAgo: number }): ChatMessage {
   return { id: 'm1', sentBy: 'acc', managerName: 'Оля', text: 'x', createdAt: new Date(Date.now() - params.minutesAgo * 60_000).toISOString(), isViewedByUser: params.viewed };
@@ -26,7 +26,7 @@ function build(setup: Setup) {
     claimState: jest.fn().mockResolvedValue(true),
     setState: jest.fn().mockResolvedValue(undefined),
   };
-  const planner = { planTouch: jest.fn().mockResolvedValue(setup.plan ?? { status: 'ready', article: 'M1103', plan: PLAN }) };
+  const planner = { planTouch: jest.fn().mockResolvedValue(setup.plan ?? { status: 'ready', missing: [], plan: PLAN }) };
   const approval = { requestApproval: jest.fn().mockResolvedValue(undefined) };
   const sender = { sendTouch: jest.fn().mockResolvedValue(undefined) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
@@ -90,7 +90,7 @@ describe('TouchChatService', () => {
     const { service, log, approval } = build({
       messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
       attempt: READ_LONG_AGO,
-      plan: { status: 'no-article', article: null, plan: null },
+      plan: { status: 'no-article', missing: [], plan: null },
     });
     const result = await service.processChat({ chat: CHAT, pass: 'regular' });
     expect(result).toMatchObject({ touched: false, noArticle: true });
@@ -102,9 +102,22 @@ describe('TouchChatService', () => {
     const { service } = build({
       messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
       attempt: { ...READ_LONG_AGO, missingAlertedAt: new Date() },
-      plan: { status: 'no-video', article: 'X9999', plan: null },
+      plan: { status: 'no-video', missing: ['X9999'], plan: null },
     });
-    expect(await service.processChat({ chat: CHAT, pass: 'regular' })).toMatchObject({ noArticle: false, noVideo: null });
+    expect(await service.processChat({ chat: CHAT, pass: 'regular' })).toMatchObject({ noArticle: false, noVideo: [] });
+  });
+
+  it('sends the videos that exist and names the articles that have none, once', async () => {
+    const { service, approval, log } = build({
+      messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
+      attempt: READ_LONG_AGO,
+      plan: { status: 'ready', missing: ['X9999'], plan: PLAN },
+    });
+    const result = await service.processChat({ chat: CHAT, pass: 'regular' });
+
+    expect(approval.requestApproval).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ touched: true, noVideo: [{ article: 'X9999' }] });
+    expect(log.markMissingAlerted).toHaveBeenCalledTimes(1);
   });
 
   it('in the morning pass touches at once, without waiting for the hour', async () => {

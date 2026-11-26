@@ -9,11 +9,13 @@ import { formatSendTrouble, formatTouchSent } from './touch-messages';
 import { hasAccountVideoSince } from './touch-video-confirm';
 import type { SendChatMessageResult } from '../sitniks-chat-send/sitniks-chat-send.types';
 import type { TouchAttemptEntity } from '../touch-log/touch-attempt.entity';
+import type { PlannedVideo } from '../touch-log/touch-log.types';
 
 const VIDEO_CLOCK_MARGIN_MS = 5000;
 const MESSAGES_TO_CHECK = 20;
 
 type SendStep = { name: string; result: SendChatMessageResult };
+type TroubleParams = { attempt: TouchAttemptEntity; step: SendStep; nothingSent: boolean };
 
 export type SendTouchParams = {
   attempt: TouchAttemptEntity;
@@ -22,8 +24,8 @@ export type SendTouchParams = {
 };
 
 /**
- * Sends one approved touch (owner, 2026-11-25): the video, and the moment it has appeared in the chat one message
- * with the warm line and the closing question. Sitniks creates the video message only after it has downloaded
+ * Sends one approved touch (owner, 2026-11-25/26): the videos one by one — each one only after the previous has
+ * appeared in the chat — and the moment the last has appeared one message with the warm line and the closing question. Sitniks creates the video message only after it has downloaded
  * the file, so the message must wait for it — never a fixed pause. Owner's rules (2026-11-19/20): never retry
  * anything, never send the message without the video, and any doubt goes to her private chat. The caller has
  * already moved the row to "sending", so two sends of the same touch cannot happen.
@@ -45,19 +47,31 @@ export class TouchSenderService {
 
   async sendTouch(params: SendTouchParams): Promise<void> {
     const { attempt } = params;
-    if (!attempt.videoFileId || !attempt.messageText) throw new Error(`Touch ${attempt.id} has no plan to send`);
+    const videos = attempt.videos ?? [];
+    if (videos.length === 0 || !attempt.messageText) throw new Error(`Touch ${attempt.id} has no plan to send`);
 
-    const startedAt = new Date(Date.now() - VIDEO_CLOCK_MARGIN_MS);
-    const video = await this.sendStep({ chatId: attempt.chatId, name: 'видео', body: { attachments: [buildVideoUrl(attempt.videoFileId)] } });
-    if (video.result.outcome === 'rejected') return this.finishWithTrouble({ attempt, step: video, nothingSent: true });
-    if (!(await this.waitForVideo({ chatId: attempt.chatId, since: startedAt }))) return this.finishWithTrouble({ attempt, step: video, nothingSent: false });
+    for (const [index, video] of videos.entries()) {
+      if (index > 0) await this.delay(this.messageGapMs);
+      const failure = await this.sendVideo({ attempt, video, alreadySent: index });
+      if (failure) return this.finishWithTrouble(failure);
+    }
 
     await this.delay(this.messageGapMs);
     const message = await this.sendStep({ chatId: attempt.chatId, name: 'сообщение', body: { text: attempt.messageText } });
     if (message.result.outcome !== 'sent') return this.finishWithTrouble({ attempt, step: message, nothingSent: false });
 
     await this.touchLogService.finishSend({ id: attempt.id, state: 'sent' });
-    if (params.announce) await this.tryTell(formatTouchSent({ chatId: attempt.chatId, clientName: attempt.clientName, videoFileName: attempt.videoFileName ?? '' }));
+    if (params.announce) await this.tryTell(formatTouchSent({ chatId: attempt.chatId, clientName: attempt.clientName, videoFileNames: videos.map((video) => video.fileName) }));
+  }
+
+  /** One video: sent, then awaited in the chat. Returns what went wrong, or null when it has arrived. */
+  private async sendVideo(params: { attempt: TouchAttemptEntity; video: PlannedVideo; alreadySent: number }): Promise<TroubleParams | null> {
+    const { attempt, video } = params;
+    const startedAt = new Date(Date.now() - VIDEO_CLOCK_MARGIN_MS);
+    const step = await this.sendStep({ chatId: attempt.chatId, name: `видео ${video.article}`, body: { attachments: [buildVideoUrl(video.fileId)] } });
+    // Only a refusal of the very first video means nothing reached the client.
+    if (step.result.outcome === 'rejected') return { attempt, step, nothingSent: params.alreadySent === 0 };
+    return (await this.waitForVideo({ chatId: attempt.chatId, since: startedAt })) ? null : { attempt, step, nothingSent: false };
   }
 
   /**
@@ -82,7 +96,7 @@ export class TouchSenderService {
    * "rejected" only when Sitniks refused the very first send, so nothing reached the client. Anything that may have
    * gone out cannot be taken back, so it is "uncertain" and never free to repeat.
    */
-  private async finishWithTrouble(params: { attempt: TouchAttemptEntity; step: SendStep; nothingSent: boolean }): Promise<void> {
+  private async finishWithTrouble(params: TroubleParams): Promise<void> {
     await this.touchLogService.finishSend({ id: params.attempt.id, state: params.nothingSent ? 'rejected' : 'uncertain' });
     await this.tryTell(
       formatSendTrouble({

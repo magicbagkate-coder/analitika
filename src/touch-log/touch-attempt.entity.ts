@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
-import type { TouchState } from './touch-log.types';
+import type { PlannedVideo, TouchState } from './touch-log.types';
 
 /**
  * One touch of one chat, keyed by the manager message it follows ("anchor"). It holds what the bot
@@ -36,11 +36,8 @@ export class TouchAttemptEntity {
   @Column({ type: 'varchar', nullable: true })
   article!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  videoFileId!: string | null;
-
-  @Column({ type: 'varchar', nullable: true })
-  videoFileName!: string | null;
+  @Column({ type: 'jsonb', nullable: true })
+  videos!: PlannedVideo[] | null;
 
   /** The one message that follows the video: a warm line about the bag and the closing question. */
   @Column({ type: 'text', nullable: true })

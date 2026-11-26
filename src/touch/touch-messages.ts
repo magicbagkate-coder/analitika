@@ -9,7 +9,8 @@ function chatLine(chat: ChatRef): string {
 }
 
 function planLines(plan: TouchPlan): string[] {
-  return [`1️⃣ 🎬 Видео: ${escapeHtml(plan.videoFileName)}`, `2️⃣ ${escapeHtml(plan.messageText)}`];
+  const names = plan.videos.map((video) => escapeHtml(video.fileName)).join(', ');
+  return [`1️⃣ 🎬 Видео (${plan.videos.length}): ${names}`, `2️⃣ ${escapeHtml(plan.messageText)}`];
 }
 
 /** The owner approves each of the first touches by hand: this is what she sees above the two buttons. */
@@ -53,8 +54,8 @@ export function formatSendTrouble(params: ChatRef & { step: string; outcome: str
   return `⚠️<b>Проблема с касанием</b>\nКлиент: ${chatLine(params)}\nШаг: ${escapeHtml(params.step)} (ответ: ${escapeHtml(params.detail)})\n${verdict} Проверьте чат.`;
 }
 
-export function formatTouchSent(params: ChatRef & { videoFileName: string }): string {
-  return `✅ Касание отправлено: ${chatLine(params)}, видео ${escapeHtml(params.videoFileName)}`;
+export function formatTouchSent(params: ChatRef & { videoFileNames: string[] }): string {
+  return `✅ Касание отправлено: ${chatLine(params)}, видео ${escapeHtml(params.videoFileNames.join(', '))}`;
 }
 
 export type MorningSummary = { closed: number; touched: number; failed: number; dryRun: boolean };

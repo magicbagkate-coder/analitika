@@ -1,25 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ClaudeTouchService } from '../claude/claude-touch.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
-import { pickTouchVideo } from '../touch-articles/pick-touch-video';
+import { pickTouchVideos } from '../touch-articles/pick-touch-videos';
 import { TouchVideoLibraryService } from '../touch-video-library/touch-video-library.service';
 import { NOTES_TO_READ } from './touch.constants';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
-import type { TouchPlan } from '../touch-log/touch-log.types';
+import type { PlannedVideo, TouchPlan } from '../touch-log/touch-log.types';
 
 export type TouchPlanResult = {
   status: 'ready' | 'no-article' | 'no-video';
-  /** What the manager wrote, when an article was written at all. */
-  article: string | null;
+  /** Articles the manager wrote that have no video — on a "ready" plan they are the ones left out. */
+  missing: string[];
   plan: TouchPlan | null;
 };
 
 export type PlanTouchParams = { chatId: string; clientName: string; messagesNewestFirst: ChatMessage[] };
 
 /**
- * Turns a chat that is due for a touch into what would be sent: the article from the chat's internal notes,
- * the matching video from the folder, and the one message Claude writes from the conversation.
- * Claude is asked last, so a chat with no article or no video costs nothing.
+ * Turns a chat that is due for a touch into what would be sent: the articles from the chat's internal notes (one
+ * video each), and the one message Claude writes from the conversation. Claude is asked last, so a chat with no
+ * article or no video costs nothing.
  */
 @Injectable()
 export class TouchPlannerService {
@@ -31,14 +31,15 @@ export class TouchPlannerService {
 
   async planTouch(params: PlanTouchParams): Promise<TouchPlanResult> {
     const notes = await this.sitniksChatMessagesService.listInternalNotes({ chatId: params.chatId, limit: NOTES_TO_READ });
-    const videos = await this.touchVideoLibraryService.listVideos();
-    const pick = pickTouchVideo({ noteTexts: notes.map((note) => note.text), fileNames: videos.map((video) => video.fileName) });
+    const library = await this.touchVideoLibraryService.listVideos();
+    const pick = pickTouchVideos({ noteTexts: notes.map((note) => note.text), fileNames: library.map((file) => file.fileName) });
+    if (pick.status !== 'found') return { status: pick.status, missing: pick.missing, plan: null };
 
-    const video = videos.find((candidate) => candidate.fileName === pick.fileName);
-    if (pick.status !== 'found' || !video || pick.article === null) return { status: pick.status === 'found' ? 'no-video' : pick.status, article: pick.article, plan: null };
-
-    const texts = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst });
-    const plan: TouchPlan = { article: pick.article, videoFileId: video.fileId, videoFileName: video.fileName, ...texts };
-    return { status: 'ready', article: pick.article, plan };
+    const videos = pick.found.flatMap((item): PlannedVideo[] => {
+      const file = library.find((candidate) => candidate.fileName === item.fileName);
+      return file ? [{ fileId: file.fileId, fileName: file.fileName, article: item.article }] : [];
+    });
+    const texts = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length });
+    return { status: 'ready', missing: pick.missing, plan: { article: pick.found.map((item) => item.article).join(', '), videos, ...texts } };
   }
 }

@@ -11,7 +11,7 @@ function chat(id: string, lastMessageAt: string): ChatListItem {
 function build(params: { chats: ChatListItem[]; mode: 'live' | 'dry-run'; processResult?: object }) {
   const list = { listChats: jest.fn().mockResolvedValue({ data: params.chats, count: params.chats.length }) };
   const status = { changeStatus: jest.fn().mockResolvedValue(undefined) };
-  const chatService = { processChat: jest.fn().mockResolvedValue({ hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: null, ...params.processResult }) };
+  const chatService = { processChat: jest.fn().mockResolvedValue({ hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: [], ...params.processResult }) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
   const config = { getTouchMode: () => params.mode, getTouchTargetStatus: () => 'Вибір товару', getTouchClosedStatus: () => 'Завершено' };
   const service = new TouchMorningService(config as never, list as never, status as never, chatService as never, telegram as never);

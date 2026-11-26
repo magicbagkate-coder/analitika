@@ -8,10 +8,15 @@ import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages
 const TOUCH_TOOL_NAME = 'submit_touch_texts';
 const MAX_TEXT_LENGTH = 450;
 const TRANSCRIPT_MESSAGES = 30;
+// Several articles in one note mean several videos (owner, 2026-11-26): the message must talk about variants, not one bag.
+const MANY_VIDEOS_RULE =
+  'Надіслано {count} відео — це кілька варіантів сумочок. Пиши про варіанти: починай "Знайшла для Вас кілька чудових варіантів — ' +
+  'відправляю відеоогляди", похвали їх загалом, а запитання зроби про вибір: "Який варіант Вам сподобався найбільше? Допоможу з ' +
+  'оформленням замовлення". Не пиши "ця сумочка" в однині.';
 
 export type TouchTexts = { messageText: string };
 
-export type WriteTouchTextsParams = { clientName: string; messagesNewestFirst: ChatMessage[] };
+export type WriteTouchTextsParams = { clientName: string; messagesNewestFirst: ChatMessage[]; videoCount: number };
 
 /**
  * The one message that follows a touch video (owner, 2026-11-25): a warm line, a general compliment of the bag and a
@@ -33,14 +38,14 @@ export class ClaudeTouchService {
         max_tokens: 600,
         tools: [this.buildTool()],
         tool_choice: { type: 'tool', name: TOUCH_TOOL_NAME },
-        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript: formatTranscript(recent) }) }],
+        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript: formatTranscript(recent), videoCount: params.videoCount }) }],
       }),
       'ClaudeTouchService.writeTouchTexts',
     );
     return this.extractTexts(response);
   }
 
-  private buildPrompt(params: { clientName: string; transcript: string }): string {
+  private buildPrompt(params: { clientName: string; transcript: string; videoCount: number }): string {
     return [
       'Ти пишеш повторне "дотичне" повідомлення клієнтці магазину сумок MagicBag від імені менеджерки (жіночий рід).',
       'Клієнтка мовчить після розмови з менеджером; їй щойно надіслали відео сумки. Потрібне ОДНЕ повідомлення, яке піде',
@@ -53,6 +58,8 @@ export class ClaudeTouchService {
       'не пропонуй "надіслати ще фото" і не тисни.',
       'Мова — ЗАВЖДИ ТІЛЬКИ УКРАЇНСЬКА, навіть якщо клієнтка пише російською: жодного російського слова. Звертання на "Ви".',
       'Не більше одного емодзі. Без підпису й без привітання. Усе повідомлення до 350 символів.',
+      '',
+      params.videoCount > 1 ? MANY_VIDEOS_RULE.replace('{count}', String(params.videoCount)) : 'Надіслано одне відео — пиши про одну сумочку.',
       '',
       `Клієнтка: ${params.clientName}`,
       `ПЕРЕПИСКА:\n${params.transcript}`,

@@ -5,10 +5,9 @@ const ATTEMPT = {
   id: 'a1',
   chatId: 'c1',
   clientName: 'Іра',
-  videoFileId: 'FILE1',
-  videoFileName: 'M1103.mp4',
+  videos: [{ fileId: 'FILE1', fileName: 'M1103.mp4', article: 'M1103' }],
   messageText: 'Знайшла для Вас чудовий відеоогляд цієї сумочки. Чи хотіли б Ви обрати її для себе?',
-} as TouchAttemptEntity;
+} as unknown as TouchAttemptEntity;
 
 type Outcome = 'sent' | 'rejected' | 'uncertain';
 
@@ -18,7 +17,7 @@ function freshVideo(): object {
   return { id: 'v', sentBy: 'acc', text: '', createdAt: new Date(Date.now() + 60_000).toISOString(), isViewedByUser: false, messageType: 'video' };
 }
 
-/** `results` are Sitniks' answers to the sends in order: video, message. */
+/** `results` are Sitniks' answers to the sends in order: each video, then the message. */
 function build(results: Outcome[], chatMessages: object[] = [freshVideo(), MANAGER_MESSAGE]) {
   const send = jest.fn();
   results.forEach((outcome) => send.mockResolvedValueOnce({ outcome, detail: outcome === 'sent' ? 'accepted' : '504' }));
@@ -45,6 +44,26 @@ describe('TouchSenderService', () => {
     expect(send.mock.calls[0][0].attachments[0]).toContain('FILE1');
     expect(send.mock.calls[1][0].text).toBe(ATTEMPT.messageText);
     expect(log.finishSend).toHaveBeenCalledWith({ id: 'a1', state: 'sent' });
+  });
+
+  it('sends several videos one after another, then one message about the variants', async () => {
+    const attempt = { ...ATTEMPT, videos: [{ fileId: 'A1', fileName: '990318.mp4', article: '990318' }, { fileId: 'B2', fileName: '990320.mp4', article: '990320' }] } as unknown as TouchAttemptEntity;
+    const { service, send, log } = build(['sent', 'sent', 'sent']);
+    await service.sendTouch({ attempt, announce: false });
+
+    expect(sentKinds(send)).toEqual(['video', 'video', 'text']);
+    expect(send.mock.calls[0][0].attachments[0]).toContain('A1');
+    expect(send.mock.calls[1][0].attachments[0]).toContain('B2');
+    expect(log.finishSend).toHaveBeenCalledWith({ id: 'a1', state: 'sent' });
+  });
+
+  it('stops after the first video when the second is refused: the client already has one, so it is uncertain', async () => {
+    const attempt = { ...ATTEMPT, videos: [{ fileId: 'A1', fileName: 'a.mp4', article: 'a1' }, { fileId: 'B2', fileName: 'b.mp4', article: 'b2' }] } as unknown as TouchAttemptEntity;
+    const { service, send, log } = build(['sent', 'rejected']);
+    await service.sendTouch({ attempt, announce: false });
+
+    expect(sentKinds(send)).toEqual(['video', 'video']);
+    expect(log.finishSend).toHaveBeenCalledWith({ id: 'a1', state: 'uncertain' });
   });
 
   it('sends the message once a 504 video has turned up in the chat (the big-file case)', async () => {
@@ -97,7 +116,7 @@ describe('TouchSenderService', () => {
 
   it('refuses to send a touch that has no plan', async () => {
     const { service, send } = build([]);
-    await expect(service.sendTouch({ attempt: { ...ATTEMPT, videoFileId: null } as TouchAttemptEntity, announce: false })).rejects.toThrow('no plan');
+    await expect(service.sendTouch({ attempt: { ...ATTEMPT, videos: [] } as unknown as TouchAttemptEntity, announce: false })).rejects.toThrow('no plan');
     expect(send).not.toHaveBeenCalled();
   });
 });

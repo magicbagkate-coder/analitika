@@ -5,9 +5,9 @@ function chat(id: string): ChatListItem {
   return { id, status: 'Вибір товару', tags: [], lastMessageCreatedAt: new Date().toISOString(), userName: `client-${id}` };
 }
 
-type Result = { hasUnansweredTouch: boolean; touched: boolean; noArticle: boolean; noVideo: { chatId: string; clientName: string; article: string } | null };
+type Result = { hasUnansweredTouch: boolean; touched: boolean; noArticle: boolean; noVideo: { chatId: string; clientName: string; article: string }[] };
 
-const NOTHING: Result = { hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: null };
+const NOTHING: Result = { hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: [] };
 
 function build(results: Result[]) {
   const chats = results.map((_, index) => chat(String(index + 1)));
@@ -33,7 +33,7 @@ describe('TouchTickService', () => {
   it('sends the owner ONE message listing every chat that lacks an article or a video', async () => {
     const { service, telegram } = build([
       { ...NOTHING, noArticle: true },
-      { ...NOTHING, noVideo: { chatId: '2', clientName: 'client-2', article: 'X9999' } },
+      { ...NOTHING, noVideo: [{ chatId: '2', clientName: 'client-2', article: 'X9999' }] },
       { ...NOTHING, noArticle: true },
     ]);
     await runTick(service);

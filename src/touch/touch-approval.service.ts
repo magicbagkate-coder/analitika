@@ -36,12 +36,7 @@ export class TouchApprovalService {
       chatId: attempt.chatId,
       clientName: attempt.clientName,
       status: attempt.sourceStatus,
-      plan: {
-        article: attempt.article ?? '',
-        videoFileId: attempt.videoFileId ?? '',
-        videoFileName: attempt.videoFileName ?? '',
-        messageText: attempt.messageText ?? '',
-      },
+      plan: { article: attempt.article ?? '', videos: attempt.videos ?? [], messageText: attempt.messageText ?? '' },
     });
     const approvalMessageId = await this.telegramOwnerBotService.sendWithButtons({
       text,

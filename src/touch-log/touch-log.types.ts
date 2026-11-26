@@ -14,10 +14,13 @@ export type NewTouchAttempt = {
   readSeenAt: Date | null;
 };
 
+export type PlannedVideo = { fileId: string; fileName: string; article: string };
+
 /** What the bot decided to send, saved before asking the owner or sending. */
 export type TouchPlan = {
+  /** The articles of the touch as the manager wrote them, joined with commas. */
   article: string;
-  videoFileId: string;
-  videoFileName: string;
+  /** One video per article, in the order written (owner, 2026-11-26). */
+  videos: PlannedVideo[];
   messageText: string;
 };

@@ -45,8 +45,8 @@ export class TouchLogService {
   }
 
   async savePlan(params: { id: string; plan: TouchPlan }): Promise<void> {
-    const { article, videoFileId, videoFileName, messageText } = params.plan;
-    await this.repository.update(params.id, { article, videoFileId, videoFileName, messageText });
+    const { article, videos, messageText } = params.plan;
+    await this.repository.update(params.id, { article, videos, messageText });
   }
 
   async markPendingApproval(params: { id: string; approvalMessageId: number }): Promise<void> {

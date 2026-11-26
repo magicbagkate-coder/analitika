@@ -9,7 +9,7 @@ import { readChatTouchFacts, type ChatTouchFacts } from './touch-chat-facts';
 import { decideTouch, type TouchDecision } from './touch-decision';
 import { formatDryRunTouch, type MissingVideoChat } from './touch-messages';
 import { TouchApprovalService } from './touch-approval.service';
-import { TouchPlannerService } from './touch-planner.service';
+import { TouchPlannerService, type TouchPlanResult } from './touch-planner.service';
 import { TouchSenderService } from './touch-sender.service';
 import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
 import type { TouchAttemptEntity } from '../touch-log/touch-attempt.entity';
@@ -24,10 +24,11 @@ export type ProcessChatResult = {
   /** A touch was sent, asked for approval or (in a dry run) would have been made. */
   touched: boolean;
   noArticle: boolean;
-  noVideo: MissingVideoChat | null;
+  /** Articles written in the chat that have no video in the folder. */
+  noVideo: MissingVideoChat[];
 };
 
-const NOTHING_HAPPENED = { touched: false, noArticle: false, noVideo: null } as const;
+const NOTHING_HAPPENED: Omit<ProcessChatResult, 'hasUnansweredTouch'> = { touched: false, noArticle: false, noVideo: [] };
 
 /**
  * One chat, one look: reads its messages, decides whether a touch is due (see decideTouch) and, if so, plans
@@ -89,12 +90,14 @@ export class TouchChatService {
 
     const clientName = attempt.clientName;
     const planned = await this.touchPlannerService.planTouch({ chatId: attempt.chatId, clientName, messagesNewestFirst: params.messages });
-    if (planned.status !== 'ready' || !planned.plan) return this.reportMissing({ attempt, article: planned.article });
+    if (planned.status !== 'ready' || !planned.plan) return this.reportMissing({ attempt, planned });
 
     await this.touchLogService.savePlan({ id: attempt.id, plan: planned.plan });
     const saved = (await this.touchLogService.findById(attempt.id)) ?? attempt;
     await this.deliver(saved);
-    return { touched: true, noArticle: false, noVideo: null };
+    // Videos that exist go out; the articles without one are still named to the owner, once.
+    const left = await this.reportMissing({ attempt, planned });
+    return { ...left, touched: true };
   }
 
   /** Dry run only describes; live asks the owner for the first 30 real touches, then sends by itself. */
@@ -120,23 +123,20 @@ export class TouchChatService {
       formatDryRunTouch({
         chatId: attempt.chatId,
         clientName: attempt.clientName,
-        plan: {
-          article: attempt.article ?? '',
-          videoFileId: attempt.videoFileId ?? '',
-          videoFileName: attempt.videoFileName ?? '',
-          messageText: attempt.messageText ?? '',
-        },
+        plan: { article: attempt.article ?? '', videos: attempt.videos ?? [], messageText: attempt.messageText ?? '' },
       }),
     );
   }
 
   /** Each chat is named to the owner once per anchor; the caller sends all names together. */
-  private async reportMissing(params: { attempt: TouchAttemptEntity; article: string | null }): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
-    if (params.attempt.missingAlertedAt) return NOTHING_HAPPENED;
-    await this.touchLogService.markMissingAlerted(params.attempt.id);
+  private async reportMissing(params: { attempt: TouchAttemptEntity; planned: TouchPlanResult }): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
+    const { attempt, planned } = params;
+    const nothingToSay = planned.status === 'ready' && planned.missing.length === 0;
+    if (nothingToSay || attempt.missingAlertedAt) return NOTHING_HAPPENED;
+    await this.touchLogService.markMissingAlerted(attempt.id);
 
-    const chat = { chatId: params.attempt.chatId, clientName: params.attempt.clientName };
-    return { touched: false, noArticle: params.article === null, noVideo: params.article === null ? null : { ...chat, article: params.article } };
+    const chat = { chatId: attempt.chatId, clientName: attempt.clientName };
+    return { touched: false, noArticle: planned.status === 'no-article', noVideo: planned.missing.map((article) => ({ ...chat, article })) };
   }
 
   private async createAttempt(params: ActParams & { readSeenAt: Date | null }): Promise<TouchAttemptEntity> {
