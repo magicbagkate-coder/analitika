@@ -62,7 +62,9 @@ export class TouchChatService {
       now: new Date(),
       waitMinutes: this.appConfig.getTouchWaitMinutes(),
       readSeenAt: attempt?.readSeenAt ?? null,
-      hasUnansweredTouch,
+      // The "client has not answered the last touch" rule is for real chats only; in the test status the staff
+      // set the chats up again on purpose (owner, 2026-11-26). The morning pass still gets the real answer below.
+      hasUnansweredTouch: hasUnansweredTouch && params.chat.status === TARGET_STATUS,
       initialSource: params.chat.initialSource,
     });
     const outcome = await this.act({ decision, chat: params.chat, anchorMessageId: facts.anchorMessageId, attempt, messages: response.data });

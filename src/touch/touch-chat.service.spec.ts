@@ -86,6 +86,15 @@ describe('TouchChatService', () => {
     expect(result.hasUnansweredTouch).toBe(true);
   });
 
+  it('in the test status touches again even though the client did not answer the last touch', async () => {
+    const madeTouch = { touchedAt: new Date(Date.now() - 30 * 60_000) };
+    const { service, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: { ...READ_LONG_AGO, sourceStatus: 'ТЕСТ КАТЯ' }, madeTouch });
+    const result = await service.processChat({ chat: { ...CHAT, status: 'ТЕСТ КАТЯ' }, pass: 'regular' });
+
+    expect(sender.sendTouch).toHaveBeenCalledTimes(1);
+    expect(result.hasUnansweredTouch).toBe(true);
+  });
+
   it('names a chat with no article once and does not touch it', async () => {
     const { service, log, approval } = build({
       messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
