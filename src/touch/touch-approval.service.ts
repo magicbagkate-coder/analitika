@@ -7,6 +7,7 @@ import type { TouchAttemptEntity } from '../touch-log/touch-attempt.entity';
 
 const APPROVE_PREFIX = 'approve:';
 const SKIP_PREFIX = 'skip:';
+export const FORCE_PREFIX = 'force:';
 const OWNER_YES = new Set(['ок', 'ok', 'да', 'так']);
 
 /**
@@ -24,9 +25,10 @@ export class TouchApprovalService {
     private readonly touchSenderService: TouchSenderService,
   ) {}
 
-  startListening(): void {
+  /** `onForce` answers the "touch anyway" buttons of the skipped list; it lives outside to keep this service free of a cycle. */
+  startListening(extra: { onForce: (attemptId: string) => Promise<string> }): void {
     this.telegramOwnerBotService.startPolling({
-      onButton: (press) => this.handleButton(press),
+      onButton: (press) => this.handleButton({ press, onForce: extra.onForce }),
       onText: (text) => this.handleText(text),
     });
   }
@@ -40,17 +42,21 @@ export class TouchApprovalService {
     });
     const approvalMessageId = await this.telegramOwnerBotService.sendWithButtons({
       text,
-      buttons: [
-        { label: '✅ Отправить', data: `${APPROVE_PREFIX}${attempt.id}` },
-        { label: '⏭ Пропустить', data: `${SKIP_PREFIX}${attempt.id}` },
+      rows: [
+        [
+          { label: '✅ Отправить', data: `${APPROVE_PREFIX}${attempt.id}` },
+          { label: '⏭ Пропустить', data: `${SKIP_PREFIX}${attempt.id}` },
+        ],
       ],
     });
     await this.touchLogService.markPendingApproval({ id: attempt.id, approvalMessageId });
   }
 
-  private async handleButton(press: ButtonPress): Promise<string> {
-    if (press.data.startsWith(APPROVE_PREFIX)) return this.approve(press.data.slice(APPROVE_PREFIX.length));
-    if (press.data.startsWith(SKIP_PREFIX)) return this.skip(press.data.slice(SKIP_PREFIX.length));
+  private async handleButton(params: { press: ButtonPress; onForce: (attemptId: string) => Promise<string> }): Promise<string> {
+    const { data } = params.press;
+    if (data.startsWith(APPROVE_PREFIX)) return this.approve(data.slice(APPROVE_PREFIX.length));
+    if (data.startsWith(SKIP_PREFIX)) return this.skip(data.slice(SKIP_PREFIX.length));
+    if (data.startsWith(FORCE_PREFIX)) return params.onForce(data.slice(FORCE_PREFIX.length));
     return 'Неизвестная кнопка';
   }
 

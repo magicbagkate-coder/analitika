@@ -17,7 +17,7 @@ export type TouchPlanResult = {
   plan: TouchPlan | null;
 };
 
-export type PlanTouchParams = { chatId: string; clientName: string; messagesNewestFirst: ChatMessage[] };
+export type PlanTouchParams = { chatId: string; clientName: string; messagesNewestFirst: ChatMessage[]; forceTouch?: boolean };
 
 /**
  * Turns a chat that is due for a touch into what would be sent: the articles from the chat's internal notes (one
@@ -44,7 +44,7 @@ export class TouchPlannerService {
       return file ? [{ fileId: file.fileId, fileName: file.fileName, article: item.article }] : [];
     });
     // Claude reads the dialog first: a chat where the client has said no costs no compression and no video.
-    const decision = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length });
+    const decision = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length, forceTouch: params.forceTouch });
     if (!decision.shouldTouch) return { status: 'skip', skipReason: decision.skipReason, missing: [], plan: null };
 
     // The light copies are made now if the background round has not got to them yet; a failed one is sent as the original.

@@ -19,10 +19,12 @@ export type OwnerBotHandlers = {
   onText: (text: string) => Promise<string | null>;
 };
 
+type InlineButton = { text: string; callback_data?: string };
+
 type TelegramUpdate = {
   update_id: number;
   message?: { chat: { id: number }; text?: string; date: number };
-  callback_query?: { id: string; data?: string; message?: { message_id: number; chat: { id: number } } };
+  callback_query?: { id: string; data?: string; message?: { message_id: number; chat: { id: number }; reply_markup?: { inline_keyboard?: InlineButton[][] } } };
 };
 
 type TelegramReply<Result> = { ok: boolean; result: Result };
@@ -45,9 +47,9 @@ export class TelegramOwnerBotService {
     private readonly telegramService: TelegramService,
   ) {}
 
-  /** Returns the Telegram message id, which the approval later refers to. */
-  async sendWithButtons(params: { text: string; buttons: OwnerButton[] }): Promise<number> {
-    const replyMarkup = { inline_keyboard: [params.buttons.map((button) => ({ text: button.label, callback_data: button.data }))] };
+  /** One inner list per row of buttons. Returns the Telegram message id, which the approval later refers to. */
+  async sendWithButtons(params: { text: string; rows: OwnerButton[][] }): Promise<number> {
+    const replyMarkup = { inline_keyboard: params.rows.map((row) => row.map((button) => ({ text: button.label, callback_data: button.data }))) };
     const body = { chat_id: this.appConfig.getTelegramOwnerChatId(), text: params.text, parse_mode: 'HTML', reply_markup: replyMarkup };
     const reply = await this.call<{ message_id: number }>('sendMessage', body);
     return reply.message_id;
@@ -88,7 +90,9 @@ export class TelegramOwnerBotService {
     if (callback?.data && callback.message && String(callback.message.chat.id) === ownerChatId) {
       const answer = await params.handlers.onButton({ data: callback.data, messageId: callback.message.message_id });
       await this.call('answerCallbackQuery', { callback_query_id: callback.id, text: answer });
-      await this.call('editMessageReplyMarkup', { chat_id: ownerChatId, message_id: callback.message.message_id, reply_markup: { inline_keyboard: [] } });
+      // Only the row of the pressed button goes: an approval is one row (both buttons leave), a list keeps its other rows.
+      const remaining = (callback.message.reply_markup?.inline_keyboard ?? []).filter((row) => !row.some((button) => button.callback_data === callback.data));
+      await this.call('editMessageReplyMarkup', { chat_id: ownerChatId, message_id: callback.message.message_id, reply_markup: { inline_keyboard: remaining } });
       return;
     }
 

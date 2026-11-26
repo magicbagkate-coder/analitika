@@ -13,7 +13,7 @@ function build(params: { claimWins?: boolean; pending?: Array<{ id: string }> })
   };
   const sender = { sendTouch: jest.fn().mockResolvedValue(undefined) };
   const service = new TouchApprovalService(bot as never, log as never, sender as never);
-  service.startListening();
+  service.startListening({ onForce: async (attemptId) => `forced ${attemptId}` });
   return { service, bot, log, sender, press: (data: string) => handlers!.onButton({ data, messageId: 1 }), type: (text: string) => handlers!.onText(text) };
 }
 
@@ -22,7 +22,7 @@ describe('TouchApprovalService', () => {
     const { service, bot, log } = build({});
     await service.requestApproval({ id: 'a1', chatId: 'c1', clientName: 'Іра', sourceStatus: 'Вибір товару' } as never);
 
-    expect(bot.sendWithButtons.mock.calls[0][0].buttons.map((button: { data: string }) => button.data)).toEqual(['approve:a1', 'skip:a1']);
+    expect(bot.sendWithButtons.mock.calls[0][0].rows[0].map((button: { data: string }) => button.data)).toEqual(['approve:a1', 'skip:a1']);
     expect(log.markPendingApproval).toHaveBeenCalledWith({ id: 'a1', approvalMessageId: 77 });
   });
 
@@ -52,6 +52,11 @@ describe('TouchApprovalService', () => {
     const two = build({ pending: [{ id: 'a1' }, { id: 'a2' }] });
     expect(await two.type('ок')).toContain('2 касаний');
     expect(two.sender.sendTouch).not.toHaveBeenCalled();
+  });
+
+  it('hands a "touch anyway" button to the force handler', async () => {
+    const { press } = build({});
+    expect(await press('force:a9')).toBe('forced a9');
   });
 
   it('stays silent for any other text', async () => {

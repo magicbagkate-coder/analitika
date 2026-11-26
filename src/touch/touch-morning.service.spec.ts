@@ -14,7 +14,8 @@ function build(params: { chats: ChatListItem[]; mode: 'live' | 'dry-run'; proces
   const chatService = { processChat: jest.fn().mockResolvedValue({ hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: [], skipped: null, ...params.processResult }) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
   const config = { getTouchMode: () => params.mode, getTouchTargetStatus: () => 'Вибір товару', getTouchClosedStatus: () => 'Завершено' };
-  const service = new TouchMorningService(config as never, list as never, status as never, chatService as never, telegram as never);
+  const ownerBot = { sendWithButtons: jest.fn().mockResolvedValue(1) };
+  const service = new TouchMorningService(config as never, list as never, status as never, chatService as never, telegram as never, ownerBot as never);
   return { service, status, chatService, telegram };
 }
 

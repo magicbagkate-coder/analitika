@@ -6,6 +6,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import { CLOCK_CHECK_MS, MORNING_PASS_HOUR, TICK_INTERVAL_MS } from './touch.constants';
 import { formatTouchError } from './touch-messages';
 import { TouchApprovalService } from './touch-approval.service';
+import { TouchForceService } from './touch-force.service';
 import { TouchMorningService } from './touch-morning.service';
 import { TouchTickService } from './touch-tick.service';
 
@@ -28,6 +29,7 @@ export class TouchSchedulerService implements OnModuleInit {
     private readonly touchTickService: TouchTickService,
     private readonly touchMorningService: TouchMorningService,
     private readonly touchApprovalService: TouchApprovalService,
+    private readonly touchForceService: TouchForceService,
     private readonly telegramService: TelegramService,
   ) {}
 
@@ -38,7 +40,7 @@ export class TouchSchedulerService implements OnModuleInit {
       return;
     }
     this.logger.log(`Touch bot starts in "${mode}" mode, target status "${this.appConfig.getTouchTargetStatus()}"`);
-    this.touchApprovalService.startListening();
+    this.touchApprovalService.startListening({ onForce: (attemptId) => this.touchForceService.forceTouch(attemptId) });
     setInterval(() => {
       this.checkClock().catch((error) => this.logger.error(`Touch clock failed: ${(error as Error).message}`));
     }, CLOCK_CHECK_MS);

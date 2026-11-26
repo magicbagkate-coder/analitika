@@ -24,7 +24,8 @@ export function formatDryRunTouch(params: ChatRef & { plan: TouchPlan }): string
 }
 
 export type MissingVideoChat = ChatRef & { article: string };
-export type SkippedChat = ChatRef & { reason: string };
+/** `attemptId` is what the "touch anyway" button under the chat refers to. */
+export type SkippedChat = ChatRef & { reason: string; attemptId: string };
 export type MissingMedia = { noArticle: ChatRef[]; noVideo: MissingVideoChat[]; skipped: SkippedChat[] };
 
 const MAX_LISTED_CHATS = 25;

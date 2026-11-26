@@ -154,6 +154,21 @@ describe('TouchChatService', () => {
     expect(settled.log.markSkippedByMeaning).toHaveBeenCalledTimes(1);
   });
 
+  it('touches a chat the dialog had ruled out when the owner chooses to touch anyway', async () => {
+    const { service, log, planner, approval } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: { state: 'skipped' } });
+    await service.processChat({ chat: CHAT, pass: 'morning', force: true });
+
+    expect(log.claimState).toHaveBeenCalledWith({ id: 'a1', from: ['skipped'], to: 'watching' });
+    expect(planner.planTouch).toHaveBeenCalledWith(expect.objectContaining({ forceTouch: true }));
+    expect(approval.requestApproval).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a skipped chat alone when the owner has not chosen to touch anyway', async () => {
+    const { service, planner } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: { state: 'skipped' } });
+    await service.processChat({ chat: CHAT, pass: 'morning' });
+    expect(planner.planTouch).not.toHaveBeenCalled();
+  });
+
   it('in the morning pass touches at once, without waiting for the hour', async () => {
     const { service, approval } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 30 })], attempt: null });
     await service.processChat({ chat: CHAT, pass: 'morning' });

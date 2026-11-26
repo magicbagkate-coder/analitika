@@ -5,7 +5,7 @@ function chat(id: string): ChatListItem {
   return { id, status: 'Вибір товару', tags: [], lastMessageCreatedAt: new Date().toISOString(), userName: `client-${id}` };
 }
 
-type Result = { hasUnansweredTouch: boolean; touched: boolean; noArticle: boolean; noVideo: { chatId: string; clientName: string; article: string }[]; skipped: { chatId: string; clientName: string; reason: string } | null };
+type Result = { hasUnansweredTouch: boolean; touched: boolean; noArticle: boolean; noVideo: { chatId: string; clientName: string; article: string }[]; skipped: { chatId: string; clientName: string; reason: string; attemptId: string } | null };
 
 const NOTHING: Result = { hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: [], skipped: null };
 
@@ -16,8 +16,9 @@ function build(results: Result[]) {
   results.forEach((result) => processChat.mockResolvedValueOnce(result));
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
   const config = { getTouchTargetStatus: () => 'Вибір товару' };
-  const service = new TouchTickService(config as never, list as never, { processChat } as never, telegram as never);
-  return { service, telegram, processChat };
+  const ownerBot = { sendWithButtons: jest.fn().mockResolvedValue(1) };
+  const service = new TouchTickService(config as never, list as never, { processChat } as never, telegram as never, ownerBot as never);
+  return { service, telegram, processChat, ownerBot };
 }
 
 describe('TouchTickService', () => {
@@ -45,14 +46,16 @@ describe('TouchTickService', () => {
     expect(text).toContain('X9999');
   });
 
-  it('lists the chats skipped by the dialog, with the reason, in the same message', async () => {
-    const { service, telegram } = build([{ ...NOTHING, skipped: { chatId: '1', clientName: 'client-1', reason: 'Клиентка написала «не цікаво»' } }, { ...NOTHING, noArticle: true }]);
+  it('lists the chats skipped by the dialog with the reason, and a "touch anyway" button under each', async () => {
+    const skipped = (id: string, reason: string) => ({ chatId: id, clientName: `client-${id}`, reason, attemptId: `att-${id}` });
+    const { service, telegram, ownerBot } = build([{ ...NOTHING, skipped: skipped('1', 'Клиентка написала «не цікаво»') }, { ...NOTHING, skipped: skipped('2', 'цена/скидка') }, { ...NOTHING, noArticle: true }]);
     await runTick(service);
 
-    expect(telegram.sendOwnerMessage).toHaveBeenCalledTimes(1);
-    const text = telegram.sendOwnerMessage.mock.calls[0][0] as string;
+    expect(telegram.sendOwnerMessage).not.toHaveBeenCalled();
+    const { text, rows } = ownerBot.sendWithButtons.mock.calls[0][0] as { text: string; rows: { data: string }[][] };
     expect(text).toContain('Не касаемся');
     expect(text).toContain('не цікаво');
+    expect(rows.map((row) => row[0].data)).toEqual(['force:att-1', 'force:att-2']);
   });
 
   it('says nothing when every chat had what it needed', async () => {

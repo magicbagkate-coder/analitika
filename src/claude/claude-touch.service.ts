@@ -20,10 +20,21 @@ const MANY_VIDEOS_RULE =
 const PLAIN_MESSAGE_ONE = 'Знайшла для Вас чудовий відеоогляд цієї сумочки 🤍 Вона дуже стильна та елегантна. Чи хотіли б Ви обрати її для себе? Якщо так, допоможу з оформленням замовлення';
 const PLAIN_MESSAGE_MANY = 'Знайшла для Вас кілька чудових варіантів — відправляю відеоогляди 🤍 Які ж вони стильні! Який варіант Вам сподобався найбільше? Допоможу з оформленням замовлення';
 
+// The owner pressed "touch anyway": step 1 is settled, and a price or a pending question must not make the text clumsy.
+const FORCED_TOUCH_RULE =
+  'ВЛАСНИЦЯ ВЖЕ ВИРІШИЛА: торкатися ОБОВ\x27ЯЗКОВО. Став shouldTouch=true і одразу пиши повідомлення. Якщо головне питання клієнтки було про ціну чи ' +
+  'знижку — не згадуй ні ціну, ні знижки; якщо клієнтка ще не відповіла на запитання менеджерки — ніжно, без тиску.';
+
 /** shouldTouch false means the dialog itself says a touch is out of place; `skipReason` is for the owner, in Russian. */
 export type TouchTexts = { shouldTouch: boolean; skipReason: string; messageText: string; usedDetails?: UsedDetail[] };
 
-export type WriteTouchTextsParams = { clientName: string; messagesNewestFirst: ChatMessage[]; videoCount: number };
+export type WriteTouchTextsParams = {
+  clientName: string;
+  messagesNewestFirst: ChatMessage[];
+  videoCount: number;
+  /** The owner decided to touch this client whatever the dialog says (the "touch anyway" choice). */
+  forceTouch?: boolean;
+};
 
 /**
  * Reads the dialog and decides, as the owner asked (2026-11-26), whether a touch fits at all; if it does, writes the
@@ -48,11 +59,14 @@ export class ClaudeTouchService {
         max_tokens: 700,
         tools: [this.buildTool()],
         tool_choice: { type: 'tool', name: TOUCH_TOOL_NAME },
-        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript, videoCount: params.videoCount }) }],
+        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript, videoCount: params.videoCount, forceTouch: params.forceTouch === true }) }],
       }),
       'ClaudeTouchService.writeTouchTexts',
     );
-    return this.proveDetails({ texts: this.extractTexts(response), transcript, videoCount: params.videoCount });
+    const texts = this.extractTexts(response);
+    // Forced touch: a "no" from the model must not stop it — the plain message goes out instead.
+    const decided = params.forceTouch && !texts.shouldTouch ? { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE } : texts;
+    return this.proveDetails({ texts: decided, transcript, videoCount: params.videoCount });
   }
 
   /** Bag details in the message must be proven by the dialog; otherwise the plain message goes out instead. */
@@ -66,11 +80,12 @@ export class ClaudeTouchService {
     return { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE };
   }
 
-  private buildPrompt(params: { clientName: string; transcript: string; videoCount: number }): string {
+  private buildPrompt(params: { clientName: string; transcript: string; videoCount: number; forceTouch: boolean }): string {
     return [
       'Ти готуєш повторне "дотичне" повідомлення клієнтці магазину сумок MagicBag від імені менеджерки (жіночий рід).',
       'Клієнтка мовчить після розмови з менеджером; їй ось-ось надішлють відео сумки.',
       '',
+      params.forceTouch ? FORCED_TOUCH_RULE : '',
       'КРОК 1. Вирішуй, чи доречне це повідомлення взагалі. НЕ торкайся (shouldTouch=false) ЛИШЕ коли з переписки ЯСНО видно одне з:',
       '— клієнтка відмовилась остаточно або не цікавиться ("не потрібно", "не цікаво", "передумала", "не буду");',
       '— просила більше не писати;',

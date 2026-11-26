@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
+import { TelegramOwnerBotService } from '../telegram/telegram-owner-bot.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { listChatsInStatus } from './list-chats-in-status';
 import { DELAY_BETWEEN_REQUESTS_MS, MAX_TOUCH_AGE_HOURS } from './touch.constants';
 import { TouchChatService } from './touch-chat.service';
-import { formatMissingMedia } from './touch-messages';
+import { sendMissingMediaReport } from './send-missing-media-report';
 import { emptyMissingMedia, hasMissingMedia, recordMissingMedia } from './touch-missing';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -23,6 +24,7 @@ export class TouchTickService {
     private readonly sitniksChatListService: SitniksChatListService,
     private readonly touchChatService: TouchChatService,
     private readonly telegramService: TelegramService,
+    private readonly ownerBot: TelegramOwnerBotService,
   ) {}
 
   async runTick(): Promise<void> {
@@ -46,7 +48,7 @@ export class TouchTickService {
     }
 
     this.logger.log(`Touch check done: ${chats.length} chats, ${failed} failed`);
-    if (hasMissingMedia(missing)) await this.telegramService.sendOwnerMessage(formatMissingMedia(missing));
+    if (hasMissingMedia(missing)) await sendMissingMediaReport({ missing, telegramService: this.telegramService, ownerBot: this.ownerBot });
   }
 
   private pause(ms: number): Promise<void> {

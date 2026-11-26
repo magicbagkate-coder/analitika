@@ -16,7 +16,7 @@ import type { TouchAttemptEntity } from '../touch-log/touch-attempt.entity';
 
 export type TouchPass = 'regular' | 'morning';
 
-export type ProcessChatParams = { chat: ChatListItem; pass: TouchPass };
+export type ProcessChatParams = { chat: ChatListItem; pass: TouchPass; /** The owner chose "touch anyway" for a chat the dialog had ruled out. */ force?: boolean };
 
 export type ProcessChatResult = {
   /** A touch went out earlier and the client has not written since — the morning pass closes such a chat. */
@@ -69,7 +69,7 @@ export class TouchChatService {
       hasUnansweredTouch: hasUnansweredTouch && params.chat.status === TARGET_STATUS,
       initialSource: params.chat.initialSource,
     });
-    const outcome = await this.act({ decision, chat: params.chat, anchorMessageId: facts.anchorMessageId, attempt, messages: response.data });
+    const outcome = await this.act({ decision, chat: params.chat, anchorMessageId: facts.anchorMessageId, attempt, messages: response.data, force: params.force === true });
     return { hasUnansweredTouch, ...outcome };
   }
 
@@ -90,10 +90,11 @@ export class TouchChatService {
 
   private async touchChat(params: ActParams): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
     const attempt = params.attempt ?? (await this.createAttempt({ ...params, readSeenAt: null }));
-    if (attempt.state !== 'watching') return NOTHING_HAPPENED;
+    if (params.force && attempt.state === 'skipped') await this.touchLogService.claimState({ id: attempt.id, from: ['skipped'], to: 'watching' });
+    else if (attempt.state !== 'watching') return NOTHING_HAPPENED;
 
     const clientName = attempt.clientName;
-    const planned = await this.touchPlannerService.planTouch({ chatId: attempt.chatId, clientName, messagesNewestFirst: params.messages });
+    const planned = await this.touchPlannerService.planTouch({ chatId: attempt.chatId, clientName, messagesNewestFirst: params.messages, forceTouch: params.force });
     if (planned.status === 'skip') return this.skipByMeaning({ attempt, reason: planned.skipReason ?? '' });
     if (planned.status !== 'ready' || !planned.plan) return this.reportMissing({ attempt, planned });
 
@@ -147,7 +148,7 @@ export class TouchChatService {
   /** The dialog says no touch: the reason is kept, and shown to the owner while she still checks these decisions. */
   private async skipByMeaning(params: { attempt: TouchAttemptEntity; reason: string }): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
     await this.touchLogService.markSkippedByMeaning({ id: params.attempt.id, reason: params.reason });
-    const skipped = (await this.isOwnerChecking(params.attempt)) ? { chatId: params.attempt.chatId, clientName: params.attempt.clientName, reason: params.reason } : null;
+    const skipped = (await this.isOwnerChecking(params.attempt)) ? { chatId: params.attempt.chatId, clientName: params.attempt.clientName, reason: params.reason, attemptId: params.attempt.id } : null;
     return { ...NOTHING_HAPPENED, skipped };
   }
 
@@ -188,4 +189,5 @@ type ActParams = {
   anchorMessageId: string;
   attempt: TouchAttemptEntity | null;
   messages: Parameters<TouchPlannerService['planTouch']>[0]['messagesNewestFirst'];
+  force: boolean;
 };

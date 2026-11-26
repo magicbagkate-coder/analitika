@@ -9,4 +9,9 @@ export type ChatDetails = {
   tags: string[];
   assignedManagerId: number | null;
   clientId: string | null;
+  // The real answer carries the same fields as a chat-list item (seen live); the touch bot needs them to treat the chat like one.
+  lastMessageCreatedAt?: string;
+  userName?: string;
+  userNickName?: string;
+  initialSource?: string;
 };

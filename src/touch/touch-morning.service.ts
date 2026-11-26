@@ -2,11 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { SitniksChatListService } from '../sitniks-chat-list/sitniks-chat-list.service';
 import { SitniksChatStatusService } from '../sitniks-chat-status/sitniks-chat-status.service';
+import { TelegramOwnerBotService } from '../telegram/telegram-owner-bot.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { listChatsInStatus } from './list-chats-in-status';
 import { DELAY_BETWEEN_REQUESTS_MS } from './touch.constants';
 import { TouchChatService } from './touch-chat.service';
-import { formatMissingMedia, formatMorningSummary, type MorningSummary } from './touch-messages';
+import { sendMissingMediaReport } from './send-missing-media-report';
+import { formatMorningSummary, type MorningSummary } from './touch-messages';
 import { emptyMissingMedia, hasMissingMedia, recordMissingMedia } from './touch-missing';
 import { getClosingCutoff } from './touch-time';
 import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
@@ -27,6 +29,7 @@ export class TouchMorningService {
     private readonly sitniksChatStatusService: SitniksChatStatusService,
     private readonly touchChatService: TouchChatService,
     private readonly telegramService: TelegramService,
+    private readonly ownerBot: TelegramOwnerBotService,
   ) {}
 
   async runMorningPass(): Promise<void> {
@@ -41,7 +44,7 @@ export class TouchMorningService {
     for (const chat of chats.filter((item) => !isOld(item))) await this.handleRecentChat({ chat, summary, missing });
 
     await this.telegramService.sendOwnerMessage(formatMorningSummary(summary));
-    if (hasMissingMedia(missing)) await this.telegramService.sendOwnerMessage(formatMissingMedia(missing));
+    if (hasMissingMedia(missing)) await sendMissingMediaReport({ missing, telegramService: this.telegramService, ownerBot: this.ownerBot });
   }
 
   private async handleRecentChat(params: { chat: ChatListItem; summary: MorningSummary; missing: ReturnType<typeof emptyMissingMedia> }): Promise<void> {
