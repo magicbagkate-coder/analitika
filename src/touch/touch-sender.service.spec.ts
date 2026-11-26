@@ -13,12 +13,14 @@ type Outcome = 'sent' | 'rejected' | 'uncertain';
 
 const MANAGER_MESSAGE = { id: 'm', sentBy: 'acc', managerName: 'Оля', text: 'x', createdAt: '2026-01-01T00:00:00.000Z', isViewedByUser: true };
 
-function freshVideo(): object {
-  return { id: 'v', sentBy: 'acc', text: '', createdAt: new Date(Date.now() + 60_000).toISOString(), isViewedByUser: false, messageType: 'video' };
+/** The shop's own record of a video, as Sitniks writes it once it has fetched the file. */
+function freshVideo(fileId: string): object {
+  const attachmentUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&name=${fileId}.mp4`;
+  return { id: `v-${fileId}`, sentBy: 'acc', text: '', createdAt: new Date(Date.now() + 60_000).toISOString(), isViewedByUser: false, messageType: 'video', attachmentUrl };
 }
 
 /** `results` are Sitniks' answers to the sends in order: each video, then the message. */
-function build(results: Outcome[], chatMessages: object[] = [freshVideo(), MANAGER_MESSAGE]) {
+function build(results: Outcome[], chatMessages: object[] = [freshVideo('FILE1'), freshVideo('A1'), freshVideo('B2'), MANAGER_MESSAGE]) {
   const send = jest.fn();
   results.forEach((outcome) => send.mockResolvedValueOnce({ outcome, detail: outcome === 'sent' ? 'accepted' : '504' }));
   const log = { finishSend: jest.fn().mockResolvedValue(undefined) };

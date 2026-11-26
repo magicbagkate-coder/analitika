@@ -71,17 +71,17 @@ export class TouchSenderService {
     const step = await this.sendStep({ chatId: attempt.chatId, name: `видео ${video.article}`, body: { attachments: [buildVideoUrl(video.fileId)] } });
     // Only a refusal of the very first video means nothing reached the client.
     if (step.result.outcome === 'rejected') return { attempt, step, nothingSent: params.alreadySent === 0 };
-    return (await this.waitForVideo({ chatId: attempt.chatId, since: startedAt })) ? null : { attempt, step, nothingSent: false };
+    return (await this.waitForVideo({ chatId: attempt.chatId, since: startedAt, fileId: video.fileId })) ? null : { attempt, step, nothingSent: false };
   }
 
   /**
    * The video shows up in the chat once Sitniks has fetched the file — a big one makes its answer a 504 first
    * (2026-11-25). The chat is watched until it does; nothing is sent again here.
    */
-  private async waitForVideo(params: { chatId: string; since: Date }): Promise<boolean> {
+  private async waitForVideo(params: { chatId: string; since: Date; fileId: string }): Promise<boolean> {
     for (let waited = 0; waited < this.confirmMs; waited += this.confirmIntervalMs) {
       const response = await this.sitniksChatMessagesService.listMessages({ chatId: params.chatId, limit: MESSAGES_TO_CHECK });
-      if (hasAccountVideoSince({ messagesNewestFirst: response.data, since: params.since })) return true;
+      if (hasAccountVideoSince({ messagesNewestFirst: response.data, since: params.since, fileId: params.fileId })) return true;
       await this.delay(this.confirmIntervalMs);
     }
     return false;
