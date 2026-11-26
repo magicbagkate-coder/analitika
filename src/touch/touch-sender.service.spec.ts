@@ -26,7 +26,8 @@ function build(results: Outcome[], chatMessages: object[] = [freshVideo('FILE1')
   const log = { finishSend: jest.fn().mockResolvedValue(undefined) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
   const listMessages = jest.fn().mockResolvedValue({ data: chatMessages });
-  const service = new TouchSenderService({ sendMessage: send } as never, { listMessages } as never, log as never, telegram as never);
+  const store = { buildSendUrl: jest.fn(async (fileId: string) => `https://server.example/touch-videos/${fileId}.mp4`) };
+  const service = new TouchSenderService({ sendMessage: send } as never, { listMessages } as never, log as never, telegram as never, store as never);
   service.messageGapMs = 0;
   service.confirmMs = 30;
   service.confirmIntervalMs = 10;

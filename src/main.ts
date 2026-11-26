@@ -1,9 +1,11 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
 import { PersistentLogger } from './logs/persistent-logger';
+import { TOUCH_VIDEO_URL_PREFIX, TouchVideoStoreService } from './touch-video-library/touch-video-store.service';
 
 /**
  * Node terminates the whole process on an unhandled promise rejection by default (Node 15+) — one
@@ -23,8 +25,15 @@ async function bootstrap(): Promise<void> {
   // bufferLogs holds every log call made during startup (including inside modules that run code in
   // their constructors/onModuleInit) until useLogger below is actually wired in, so nothing from
   // boot is lost to the console-only default logger before PersistentLogger takes over.
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   app.useLogger(app.get(PersistentLogger));
+
+  // The light copies of the touch videos are served from here: Sitniks downloads a video from a link.
+  const videoStore = app.get(TouchVideoStoreService);
+  if (videoStore.isEnabled()) {
+    await videoStore.ensureDirectory();
+    app.useStaticAssets(videoStore.directory, { prefix: TOUCH_VIDEO_URL_PREFIX });
+  }
 
   const appConfig = app.get(AppConfigService);
   await app.listen(appConfig.getPort());

@@ -6,3 +6,5 @@ dist-scripts/
 *.tsbuildinfo
 reports/
 .claude/
+
+touch-videos/

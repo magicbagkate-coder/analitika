@@ -8,3 +8,5 @@ scripts
 *.log
 *.tsbuildinfo
 .claude
+
+touch-videos

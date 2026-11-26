@@ -9,6 +9,8 @@ RUN npm run build
 FROM node:20.18.1-alpine3.20 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# ffmpeg makes the light copies of the touch videos.
+RUN apk add --no-cache ffmpeg
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist

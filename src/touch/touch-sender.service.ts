@@ -3,7 +3,7 @@ import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-cha
 import { SitniksChatSendService } from '../sitniks-chat-send/sitniks-chat-send.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { TouchLogService } from '../touch-log/touch-log.service';
-import { buildVideoUrl } from '../touch-video-library/build-video-url';
+import { TouchVideoStoreService } from '../touch-video-library/touch-video-store.service';
 import { MESSAGE_GAP_MS, VIDEO_CONFIRM_INTERVAL_MS, VIDEO_CONFIRM_MS } from './touch.constants';
 import { formatSendTrouble, formatTouchSent } from './touch-messages';
 import { hasAccountVideoSince } from './touch-video-confirm';
@@ -43,6 +43,7 @@ export class TouchSenderService {
     private readonly sitniksChatMessagesService: SitniksChatMessagesService,
     private readonly touchLogService: TouchLogService,
     private readonly telegramService: TelegramService,
+    private readonly touchVideoStoreService: TouchVideoStoreService,
   ) {}
 
   async sendTouch(params: SendTouchParams): Promise<void> {
@@ -68,7 +69,7 @@ export class TouchSenderService {
   private async sendVideo(params: { attempt: TouchAttemptEntity; video: PlannedVideo; alreadySent: number }): Promise<TroubleParams | null> {
     const { attempt, video } = params;
     const startedAt = new Date(Date.now() - VIDEO_CLOCK_MARGIN_MS);
-    const step = await this.sendStep({ chatId: attempt.chatId, name: `видео ${video.article}`, body: { attachments: [buildVideoUrl(video.fileId)] } });
+    const step = await this.sendStep({ chatId: attempt.chatId, name: `видео ${video.article}`, body: { attachments: [await this.touchVideoStoreService.buildSendUrl(video.fileId)] } });
     // Only a refusal of the very first video means nothing reached the client.
     if (step.result.outcome === 'rejected') return { attempt, step, nothingSent: params.alreadySent === 0 };
     return (await this.waitForVideo({ chatId: attempt.chatId, since: startedAt, fileId: video.fileId })) ? null : { attempt, step, nothingSent: false };

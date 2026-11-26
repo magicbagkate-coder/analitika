@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ClaudeTouchService } from '../claude/claude-touch.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { pickTouchVideos } from '../touch-articles/pick-touch-videos';
+import { TouchVideoCompressorService } from '../touch-video-library/touch-video-compressor.service';
 import { TouchVideoLibraryService } from '../touch-video-library/touch-video-library.service';
 import { NOTES_TO_READ } from './touch.constants';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
@@ -26,6 +27,7 @@ export class TouchPlannerService {
   constructor(
     private readonly sitniksChatMessagesService: SitniksChatMessagesService,
     private readonly touchVideoLibraryService: TouchVideoLibraryService,
+    private readonly touchVideoCompressorService: TouchVideoCompressorService,
     private readonly claudeTouchService: ClaudeTouchService,
   ) {}
 
@@ -39,6 +41,8 @@ export class TouchPlannerService {
       const file = library.find((candidate) => candidate.fileName === item.fileName);
       return file ? [{ fileId: file.fileId, fileName: file.fileName, article: item.article }] : [];
     });
+    // The light copies are made now if the background round has not got to them yet; a failed one is sent as the original.
+    for (const video of videos) await this.touchVideoCompressorService.ensureCompressed(video.fileId);
     const texts = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length });
     return { status: 'ready', missing: pick.missing, plan: { article: pick.found.map((item) => item.article).join(', '), videos, ...texts } };
   }

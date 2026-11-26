@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { join } from 'node:path';
 
 /** Typed access to environment variables used across the app. */
 @Injectable()
@@ -61,6 +62,16 @@ export class AppConfigService {
   /** Minutes to wait after the bot first sees the client read a message (60 for real work, 1-2 for a test). */
   getTouchWaitMinutes(): number {
     return Number(this.configService.get<string>('TOUCH_WAIT_MINUTES', '60'));
+  }
+
+  /** Where Sitniks can reach this server from outside, e.g. http://116.204.153.123:3000 — without it videos are sent uncompressed from Drive. */
+  getTouchVideoPublicUrl(): string | null {
+    const url = this.configService.get<string>('TOUCH_VIDEO_PUBLIC_URL');
+    return url ? url.replace(/\/+$/, '') : null;
+  }
+
+  getTouchVideoDir(): string {
+    return this.configService.get<string>('TOUCH_VIDEO_DIR') || join(process.cwd(), 'touch-videos');
   }
 
   getTouchVideoFolderId(): string | null {
