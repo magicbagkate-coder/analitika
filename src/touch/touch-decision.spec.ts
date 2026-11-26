@@ -11,6 +11,7 @@ function input(overrides: Partial<TouchDecisionInput> = {}): TouchDecisionInput 
     waitMinutes: 60,
     readSeenAt: new Date('2026-11-25T08:50:00.000Z'),
     hasUnansweredTouch: false,
+    initialSource: 'telegram_private',
     ...overrides,
   };
 }
@@ -48,6 +49,12 @@ describe('decideTouch', () => {
   it('ignores a chat whose last message is older than a day', () => {
     const facts = { ...input().facts, lastMessageAt: new Date('2026-11-24T08:00:00.000Z') };
     expect(decideTouch(input({ facts }))).toBe('ignore');
+  });
+
+  it('ignores an Instagram client who last wrote more than a week ago (Meta refuses it)', () => {
+    const facts = { ...input().facts, lastClientAt: new Date(NOON.getTime() - 169 * 3600_000) };
+    expect(decideTouch(input({ facts, initialSource: 'instagram' }))).toBe('ignore');
+    expect(decideTouch(input({ facts, initialSource: 'telegram_private' }))).toBe('touch');
   });
 
   it('in the morning pass touches at once, without the hour or the window', () => {

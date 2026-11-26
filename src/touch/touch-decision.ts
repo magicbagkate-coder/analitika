@@ -1,3 +1,4 @@
+import { isInsideMessagingWindow } from './messaging-window';
 import { isInsideTouchWindow } from './touch-time';
 import { MAX_TOUCH_AGE_HOURS } from './touch.constants';
 import type { ChatTouchFacts } from './touch-chat-facts';
@@ -14,6 +15,8 @@ export type TouchDecisionInput = {
   readSeenAt: Date | null;
   /** A touch went out and the client has not written since. */
   hasUnansweredTouch: boolean;
+  /** The channel of the chat ('instagram', 'facebook'...), which decides how long the client may still be written to. */
+  initialSource: string | undefined;
 };
 
 /**
@@ -25,6 +28,7 @@ export type TouchDecision = 'touch' | 'start-waiting' | 'wait' | 'ignore';
 function isEligible(input: TouchDecisionInput): boolean {
   if (input.hasUnansweredTouch) return false;
   if (input.facts.lastParty !== 'manager' || !input.facts.anchorIsRead) return false;
+  if (!isInsideMessagingWindow({ initialSource: input.initialSource, lastClientAt: input.facts.lastClientAt, now: input.now })) return false;
   const lastMessageAt = input.facts.lastMessageAt;
   return lastMessageAt !== null && input.now.getTime() - lastMessageAt.getTime() <= MAX_TOUCH_AGE_HOURS * HOUR_MS;
 }

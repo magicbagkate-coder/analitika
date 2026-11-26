@@ -17,6 +17,8 @@ export type ChatListItem = {
   lastMessageCreatedAt: string;
   userName: string;
   userNickName?: string;
+  /** The channel the chat came from: 'instagram', 'facebook', 'telegram_private', 'viber_private'... */
+  initialSource?: string;
 };
 
 export type ListChatsResponse = {

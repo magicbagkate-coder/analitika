@@ -62,6 +62,7 @@ export class TouchChatService {
       waitMinutes: this.appConfig.getTouchWaitMinutes(),
       readSeenAt: attempt?.readSeenAt ?? null,
       hasUnansweredTouch,
+      initialSource: params.chat.initialSource,
     });
     const outcome = await this.act({ decision, chat: params.chat, anchorMessageId: facts.anchorMessageId, attempt, messages: response.data });
     return { hasUnansweredTouch, ...outcome };
