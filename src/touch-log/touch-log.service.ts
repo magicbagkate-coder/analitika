@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { TouchAttemptEntity } from './touch-attempt.entity';
-import type { NewTouchAttempt, TouchPlan, TouchState } from './touch-log.types';
+import { TouchCorrectionEntity } from './touch-correction.entity';
+import type { CorrectionExample, NewTouchAttempt, TouchPlan, TouchState } from './touch-log.types';
 
 const TOUCH_MADE_STATES: TouchState[] = ['sent', 'uncertain'];
 
@@ -12,6 +13,8 @@ export class TouchLogService {
   constructor(
     @InjectRepository(TouchAttemptEntity)
     private readonly repository: Repository<TouchAttemptEntity>,
+    @InjectRepository(TouchCorrectionEntity)
+    private readonly corrections: Repository<TouchCorrectionEntity>,
   ) {}
 
   async findForAnchor(params: { chatId: string; anchorMessageId: string }): Promise<TouchAttemptEntity | null> {
@@ -65,6 +68,22 @@ export class TouchLogService {
   /** The dialog itself said no touch: the chat is left alone for this message and the reason is kept for the owner. */
   async markSkippedByMeaning(params: { id: string; reason: string }): Promise<void> {
     await this.repository.update(params.id, { state: 'skipped', skipReason: params.reason });
+  }
+
+  /** The owner's own text for a touch that still waits for her; false when it is no longer waiting. */
+  async updatePendingMessage(params: { id: string; messageText: string }): Promise<boolean> {
+    const result = await this.repository.update({ id: params.id, state: 'pending_approval' }, { messageText: params.messageText });
+    return (result.affected ?? 0) > 0;
+  }
+
+  async recordCorrection(params: { chatId: string; originalText: string; correctedText: string }): Promise<void> {
+    await this.corrections.insert(params);
+  }
+
+  /** The newest corrections first — what the writer learns the owner's wording from. */
+  async findRecentCorrections(limit: number): Promise<CorrectionExample[]> {
+    const rows = await this.corrections.find({ order: { createdAt: 'DESC' }, take: limit });
+    return rows.map((row) => ({ original: row.originalText, corrected: row.correctedText }));
   }
 
   async finishSend(params: { id: string; state: TouchState }): Promise<void> {

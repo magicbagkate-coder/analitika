@@ -2,11 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { ClaudeTouchService } from '../claude/claude-touch.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { pickTouchVideos } from '../touch-articles/pick-touch-videos';
+import { TouchLogService } from '../touch-log/touch-log.service';
 import { TouchVideoCompressorService } from '../touch-video-library/touch-video-compressor.service';
 import { TouchVideoLibraryService } from '../touch-video-library/touch-video-library.service';
 import { NOTES_TO_READ } from './touch.constants';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 import type { PlannedVideo, TouchPlan } from '../touch-log/touch-log.types';
+
+/** How many of the owner's latest corrections the writer sees. */
+const RECENT_CORRECTIONS = 10;
 
 export type TouchPlanResult = {
   status: 'ready' | 'no-article' | 'no-video' | 'skip';
@@ -31,6 +35,7 @@ export class TouchPlannerService {
     private readonly touchVideoLibraryService: TouchVideoLibraryService,
     private readonly touchVideoCompressorService: TouchVideoCompressorService,
     private readonly claudeTouchService: ClaudeTouchService,
+    private readonly touchLogService: TouchLogService,
   ) {}
 
   async planTouch(params: PlanTouchParams): Promise<TouchPlanResult> {
@@ -43,8 +48,9 @@ export class TouchPlannerService {
       const file = library.find((candidate) => candidate.fileName === item.fileName);
       return file ? [{ fileId: file.fileId, fileName: file.fileName, article: item.article }] : [];
     });
+    const examples = await this.touchLogService.findRecentCorrections(RECENT_CORRECTIONS);
     // Claude reads the dialog first: a chat where the client has said no costs no compression and no video.
-    const decision = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length, forceTouch: params.forceTouch });
+    const decision = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length, forceTouch: params.forceTouch, examples });
     if (!decision.shouldTouch) return { status: 'skip', skipReason: decision.skipReason, missing: [], plan: null };
 
     // The light copies are made now if the background round has not got to them yet; a failed one is sent as the original.

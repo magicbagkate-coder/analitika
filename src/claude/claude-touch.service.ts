@@ -28,12 +28,16 @@ const FORCED_TOUCH_RULE =
 /** shouldTouch false means the dialog itself says a touch is out of place; `skipReason` is for the owner, in Russian. */
 export type TouchTexts = { shouldTouch: boolean; skipReason: string; messageText: string; usedDetails?: UsedDetail[] };
 
+export type StyleExample = { original: string; corrected: string };
+
 export type WriteTouchTextsParams = {
   clientName: string;
   messagesNewestFirst: ChatMessage[];
   videoCount: number;
   /** The owner decided to touch this client whatever the dialog says (the "touch anyway" choice). */
   forceTouch?: boolean;
+  /** Her recent corrections of the bot's messages: what the bot wrote and what she made of it. */
+  examples?: StyleExample[];
 };
 
 /**
@@ -59,7 +63,7 @@ export class ClaudeTouchService {
         max_tokens: 700,
         tools: [this.buildTool()],
         tool_choice: { type: 'tool', name: TOUCH_TOOL_NAME },
-        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript, videoCount: params.videoCount, forceTouch: params.forceTouch === true }) }],
+        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript, videoCount: params.videoCount, forceTouch: params.forceTouch === true, examples: params.examples ?? [] }) }],
       }),
       'ClaudeTouchService.writeTouchTexts',
     );
@@ -80,7 +84,7 @@ export class ClaudeTouchService {
     return { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE };
   }
 
-  private buildPrompt(params: { clientName: string; transcript: string; videoCount: number; forceTouch: boolean }): string {
+  private buildPrompt(params: { clientName: string; transcript: string; videoCount: number; forceTouch: boolean; examples: StyleExample[] }): string {
     return [
       'Ти готуєш повторне "дотичне" повідомлення клієнтці магазину сумок MagicBag від імені менеджерки (жіночий рід).',
       'Клієнтка мовчить після розмови з менеджером; їй ось-ось надішлють відео сумки.',
@@ -121,11 +125,24 @@ export class ClaudeTouchService {
       'Мова повідомлення — ЗАВЖДИ ТІЛЬКИ УКРАЇНСЬКА, навіть якщо клієнтка пише російською: жодного російського слова. Звертання на "Ви".',
       'Не більше одного емодзі. Без підпису й без привітання. Усе повідомлення до 350 символів.',
       '',
+      ...this.buildExamplesBlock(params.examples),
       params.videoCount > 1 ? MANY_VIDEOS_RULE.replace('{count}', String(params.videoCount)) : 'Надіслано одне відео — пиши про одну сумочку.',
       '',
       `Клієнтка: ${params.clientName}`,
       `ПЕРЕПИСКА:\n${params.transcript}`,
     ].join('\n');
+  }
+
+  /** The owner's corrections, newest first: her wording and tone, not a script — and still no details the dialog lacks. */
+  private buildExamplesBlock(examples: StyleExample[]): string[] {
+    if (examples.length === 0) return [];
+    const lines = examples.map((example) => `Було (написав бот): "${example.original}"\nСтало (власниця виправила): "${example.corrected}"`);
+    return [
+      'ПРИКЛАДИ ВИПРАВЛЕНЬ ВЛАСНИЦІ. Вона переписувала повідомлення бота. Бери з них її слова, тон і довжину, але не копіюй дослівно, якщо ситуація інша,',
+      'і НЕ переноси особливості сумки, яких немає в цій переписці.',
+      ...lines,
+      '',
+    ];
   }
 
   private buildTool(): Anthropic.Tool {

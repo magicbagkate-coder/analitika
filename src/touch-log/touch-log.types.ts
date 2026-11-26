@@ -14,6 +14,9 @@ export type NewTouchAttempt = {
   readSeenAt: Date | null;
 };
 
+/** One of the owner's corrections, as the writer sees it: what the bot wrote, and what she made of it. */
+export type CorrectionExample = { original: string; corrected: string };
+
 export type PlannedVideo = { fileId: string; fileName: string; article: string };
 
 /** What the bot decided to send, saved before asking the owner or sending. */
