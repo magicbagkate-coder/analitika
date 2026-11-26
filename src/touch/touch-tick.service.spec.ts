@@ -5,9 +5,9 @@ function chat(id: string): ChatListItem {
   return { id, status: 'Вибір товару', tags: [], lastMessageCreatedAt: new Date().toISOString(), userName: `client-${id}` };
 }
 
-type Result = { hasUnansweredTouch: boolean; touched: boolean; noArticle: boolean; noVideo: { chatId: string; clientName: string; article: string }[] };
+type Result = { hasUnansweredTouch: boolean; touched: boolean; noArticle: boolean; noVideo: { chatId: string; clientName: string; article: string }[]; skipped: { chatId: string; clientName: string; reason: string } | null };
 
-const NOTHING: Result = { hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: [] };
+const NOTHING: Result = { hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: [], skipped: null };
 
 function build(results: Result[]) {
   const chats = results.map((_, index) => chat(String(index + 1)));
@@ -43,6 +43,16 @@ describe('TouchTickService', () => {
     expect(text).toContain('client-1');
     expect(text).toContain('client-3');
     expect(text).toContain('X9999');
+  });
+
+  it('lists the chats skipped by the dialog, with the reason, in the same message', async () => {
+    const { service, telegram } = build([{ ...NOTHING, skipped: { chatId: '1', clientName: 'client-1', reason: 'Клиентка написала «не цікаво»' } }, { ...NOTHING, noArticle: true }]);
+    await runTick(service);
+
+    expect(telegram.sendOwnerMessage).toHaveBeenCalledTimes(1);
+    const text = telegram.sendOwnerMessage.mock.calls[0][0] as string;
+    expect(text).toContain('Не касаемся');
+    expect(text).toContain('не цікаво');
   });
 
   it('says nothing when every chat had what it needed', async () => {

@@ -24,7 +24,8 @@ export function formatDryRunTouch(params: ChatRef & { plan: TouchPlan }): string
 }
 
 export type MissingVideoChat = ChatRef & { article: string };
-export type MissingMedia = { noArticle: ChatRef[]; noVideo: MissingVideoChat[] };
+export type SkippedChat = ChatRef & { reason: string };
+export type MissingMedia = { noArticle: ChatRef[]; noVideo: MissingVideoChat[]; skipped: SkippedChat[] };
 
 const MAX_LISTED_CHATS = 25;
 const NEW_LINE = '\n';
@@ -41,9 +42,11 @@ function listChats(lines: string[]): string[] {
 export function formatMissingMedia(missing: MissingMedia): string {
   const noArticle = listChats(missing.noArticle.map((chat) => `• ${chatLine(chat)}`));
   const noVideo = listChats(missing.noVideo.map((chat) => `• ${chatLine(chat)} — артикул <b>${escapeHtml(chat.article)}</b>`));
+  const skipped = listChats(missing.skipped.map((chat) => `• ${chatLine(chat)} — ${escapeHtml(chat.reason)}`));
   const sections = [
     noArticle.length > 0 ? ['📝<b>Касание пора делать, но нет артикула в заметке:</b>', ...noArticle].join(NEW_LINE) : '',
     noVideo.length > 0 ? ['🎞<b>Артикул есть, видео в папке нет — загрузите:</b>', ...noVideo].join(NEW_LINE) : '',
+    skipped.length > 0 ? ['🚫<b>Не касаемся, по смыслу диалога (проверьте, нет ли ошибки):</b>', ...skipped].join(NEW_LINE) : '',
   ];
   return sections.filter((section) => section.length > 0).join(NEW_LINE + NEW_LINE);
 }

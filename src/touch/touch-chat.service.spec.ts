@@ -25,6 +25,7 @@ function build(setup: Setup) {
     countMadeTouches: jest.fn().mockResolvedValue(setup.made ?? 0),
     claimState: jest.fn().mockResolvedValue(true),
     setState: jest.fn().mockResolvedValue(undefined),
+    markSkippedByMeaning: jest.fn().mockResolvedValue(undefined),
   };
   const planner = { planTouch: jest.fn().mockResolvedValue(setup.plan ?? { status: 'ready', missing: [], plan: PLAN }) };
   const approval = { requestApproval: jest.fn().mockResolvedValue(undefined) };
@@ -113,7 +114,7 @@ describe('TouchChatService', () => {
       attempt: { ...READ_LONG_AGO, missingAlertedAt: new Date() },
       plan: { status: 'no-video', missing: ['X9999'], plan: null },
     });
-    expect(await service.processChat({ chat: CHAT, pass: 'regular' })).toMatchObject({ noArticle: false, noVideo: [] });
+    expect(await service.processChat({ chat: CHAT, pass: 'regular' })).toMatchObject({ noArticle: false, noVideo: [], skipped: null });
   });
 
   it('sends the videos that exist and names the articles that have none, once', async () => {
@@ -127,6 +128,30 @@ describe('TouchChatService', () => {
     expect(approval.requestApproval).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ touched: true, noVideo: [{ article: 'X9999' }] });
     expect(log.markMissingAlerted).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a chat alone when the dialog says no touch, keeps the reason, and shows it to the owner in the test status', async () => {
+    const { service, log, approval, sender } = build({
+      messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
+      attempt: { ...READ_LONG_AGO, sourceStatus: 'ТЕСТ КАТЯ' },
+      plan: { status: 'skip', skipReason: 'Клиентка написала «не потрібно»', missing: [], plan: null },
+    });
+    const result = await service.processChat({ chat: { ...CHAT, status: 'ТЕСТ КАТЯ' }, pass: 'regular' });
+
+    expect(log.markSkippedByMeaning).toHaveBeenCalledWith({ id: 'a1', reason: 'Клиентка написала «не потрібно»' });
+    expect(result).toMatchObject({ touched: false, skipped: { reason: 'Клиентка написала «не потрібно»' } });
+    expect(approval.requestApproval).not.toHaveBeenCalled();
+    expect(sender.sendTouch).not.toHaveBeenCalled();
+  });
+
+  it('stops listing skipped chats to the owner once thirty real touches are done', async () => {
+    const watched = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, made: 5, plan: { status: 'skip', skipReason: 'r', missing: [], plan: null } });
+    expect((await watched.service.processChat({ chat: CHAT, pass: 'regular' })).skipped).not.toBeNull();
+
+    const settled = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, made: 30, plan: { status: 'skip', skipReason: 'r', missing: [], plan: null } });
+    const result = await settled.service.processChat({ chat: CHAT, pass: 'regular' });
+    expect(result.skipped).toBeNull();
+    expect(settled.log.markSkippedByMeaning).toHaveBeenCalledTimes(1);
   });
 
   it('in the morning pass touches at once, without waiting for the hour', async () => {

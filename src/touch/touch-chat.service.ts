@@ -7,7 +7,7 @@ import { TouchLogService } from '../touch-log/touch-log.service';
 import { APPROVED_TOUCHES_REQUIRED, MESSAGES_TO_READ } from './touch.constants';
 import { readChatTouchFacts, type ChatTouchFacts } from './touch-chat-facts';
 import { decideTouch, type TouchDecision } from './touch-decision';
-import { formatDryRunTouch, type MissingVideoChat } from './touch-messages';
+import { formatDryRunTouch, type MissingVideoChat, type SkippedChat } from './touch-messages';
 import { TouchApprovalService } from './touch-approval.service';
 import { TouchPlannerService, type TouchPlanResult } from './touch-planner.service';
 import { TouchSenderService } from './touch-sender.service';
@@ -26,9 +26,11 @@ export type ProcessChatResult = {
   noArticle: boolean;
   /** Articles written in the chat that have no video in the folder. */
   noVideo: MissingVideoChat[];
+  /** A touch the dialog itself ruled out — set only while the owner still checks such decisions. */
+  skipped: SkippedChat | null;
 };
 
-const NOTHING_HAPPENED: Omit<ProcessChatResult, 'hasUnansweredTouch'> = { touched: false, noArticle: false, noVideo: [] };
+const NOTHING_HAPPENED: Omit<ProcessChatResult, 'hasUnansweredTouch'> = { touched: false, noArticle: false, noVideo: [], skipped: null };
 
 /**
  * One chat, one look: reads its messages, decides whether a touch is due (see decideTouch) and, if so, plans
@@ -92,6 +94,7 @@ export class TouchChatService {
 
     const clientName = attempt.clientName;
     const planned = await this.touchPlannerService.planTouch({ chatId: attempt.chatId, clientName, messagesNewestFirst: params.messages });
+    if (planned.status === 'skip') return this.skipByMeaning({ attempt, reason: planned.skipReason ?? '' });
     if (planned.status !== 'ready' || !planned.plan) return this.reportMissing({ attempt, planned });
 
     await this.touchLogService.savePlan({ id: attempt.id, plan: planned.plan });
@@ -138,7 +141,20 @@ export class TouchChatService {
     await this.touchLogService.markMissingAlerted(attempt.id);
 
     const chat = { chatId: attempt.chatId, clientName: attempt.clientName };
-    return { touched: false, noArticle: planned.status === 'no-article', noVideo: planned.missing.map((article) => ({ ...chat, article })) };
+    return { touched: false, noArticle: planned.status === 'no-article', noVideo: planned.missing.map((article) => ({ ...chat, article })), skipped: null };
+  }
+
+  /** The dialog says no touch: the reason is kept, and shown to the owner while she still checks these decisions. */
+  private async skipByMeaning(params: { attempt: TouchAttemptEntity; reason: string }): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
+    await this.touchLogService.markSkippedByMeaning({ id: params.attempt.id, reason: params.reason });
+    const skipped = (await this.isOwnerChecking(params.attempt)) ? { chatId: params.attempt.chatId, clientName: params.attempt.clientName, reason: params.reason } : null;
+    return { ...NOTHING_HAPPENED, skipped };
+  }
+
+  /** The first 30 real touches, and every test-status one, are checked by the owner; after that the skipped list stops coming. */
+  private async isOwnerChecking(attempt: TouchAttemptEntity): Promise<boolean> {
+    if (attempt.sourceStatus !== TARGET_STATUS) return true;
+    return (await this.touchLogService.countMadeTouches(TARGET_STATUS)) < APPROVED_TOUCHES_REQUIRED;
   }
 
   private async createAttempt(params: ActParams & { readSeenAt: Date | null }): Promise<TouchAttemptEntity> {

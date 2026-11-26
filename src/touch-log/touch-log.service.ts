@@ -62,6 +62,11 @@ export class TouchLogService {
     return (result.affected ?? 0) > 0;
   }
 
+  /** The dialog itself said no touch: the chat is left alone for this message and the reason is kept for the owner. */
+  async markSkippedByMeaning(params: { id: string; reason: string }): Promise<void> {
+    await this.repository.update(params.id, { state: 'skipped', skipReason: params.reason });
+  }
+
   async finishSend(params: { id: string; state: TouchState }): Promise<void> {
     await this.repository.update(params.id, { state: params.state, touchedAt: new Date() });
   }

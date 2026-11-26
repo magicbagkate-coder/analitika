@@ -47,6 +47,10 @@ export class TouchAttemptEntity {
   @Column({ type: 'int', nullable: true })
   approvalMessageId!: number | null;
 
+  /** Why the dialog said no touch (Russian, for the owner); set together with the state 'skipped'. */
+  @Column({ type: 'text', nullable: true })
+  skipReason!: string | null;
+
   /** When the owner was told that the article or the video is missing — said once per anchor. */
   @Column({ type: 'timestamp', nullable: true })
   missingAlertedAt!: Date | null;
