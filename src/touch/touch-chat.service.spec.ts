@@ -61,11 +61,11 @@ describe('TouchChatService', () => {
     expect(approval.requestApproval).not.toHaveBeenCalled();
   });
 
-  it('always asks for a chat of another status, such as the test one', async () => {
-    const { service, approval, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: { ...READ_LONG_AGO, sourceStatus: 'ТЕСТ КАТЯ' }, made: 30 });
+  it('sends a touch of the test status by itself, without asking, and tells the owner afterwards', async () => {
+    const { service, approval, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: { ...READ_LONG_AGO, sourceStatus: 'ТЕСТ КАТЯ' } });
     await service.processChat({ chat: CHAT, pass: 'regular' });
-    expect(approval.requestApproval).toHaveBeenCalledTimes(1);
-    expect(sender.sendTouch).not.toHaveBeenCalled();
+    expect(approval.requestApproval).not.toHaveBeenCalled();
+    expect(sender.sendTouch).toHaveBeenCalledWith(expect.objectContaining({ announce: true }));
   });
 
   it('in a dry run only tells the owner and sends nothing', async () => {

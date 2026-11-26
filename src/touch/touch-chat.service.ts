@@ -96,17 +96,18 @@ export class TouchChatService {
     return { touched: true, noArticle: false, noVideo: null };
   }
 
-  /** Dry run only describes; live asks the owner for the first 30 touches, then sends by itself. */
+  /** Dry run only describes; live asks the owner for the first 30 real touches, then sends by itself. */
   private async deliver(attempt: TouchAttemptEntity): Promise<void> {
     if (this.appConfig.getTouchMode() === 'dry-run') return this.describeDryRun(attempt);
     if (await this.needsApproval(attempt)) return this.touchApprovalService.requestApproval(attempt);
 
     const won = await this.touchLogService.claimState({ id: attempt.id, from: ['watching'], to: 'sending' });
-    if (won) await this.touchSenderService.sendTouch({ attempt, announce: false });
+    if (won) await this.touchSenderService.sendTouch({ attempt, announce: attempt.sourceStatus !== TARGET_STATUS });
   }
 
+  /** Only touches in the real status are approved by hand (the first 30); the test status sends by itself (owner, 2026-11-26). */
   private async needsApproval(attempt: TouchAttemptEntity): Promise<boolean> {
-    if (attempt.sourceStatus !== TARGET_STATUS) return true;
+    if (attempt.sourceStatus !== TARGET_STATUS) return false;
     return (await this.touchLogService.countMadeTouches(TARGET_STATUS)) < APPROVED_TOUCHES_REQUIRED;
   }
 
