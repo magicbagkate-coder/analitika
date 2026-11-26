@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 import { formatTranscript } from './transcript-formatter';
+import { findUnprovenDetails, type UsedDetail } from './touch-message-check';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
 const TOUCH_TOOL_NAME = 'submit_touch_decision';
@@ -15,8 +16,12 @@ const MANY_VIDEOS_RULE =
   'відправляю відеоогляди", похвали їх загалом, а запитання зроби про вибір: "Який варіант Вам сподобався найбільше? Допоможу з ' +
   'оформленням замовлення". Не пиши "ця сумочка" в однині.';
 
+// Sent instead of a message whose bag details the dialog does not prove: no detail at all, only general praise.
+const PLAIN_MESSAGE_ONE = 'Знайшла для Вас чудовий відеоогляд цієї сумочки 🤍 Вона дуже стильна та елегантна. Чи хотіли б Ви обрати її для себе? Якщо так, допоможу з оформленням замовлення';
+const PLAIN_MESSAGE_MANY = 'Знайшла для Вас кілька чудових варіантів — відправляю відеоогляди 🤍 Які ж вони стильні! Який варіант Вам сподобався найбільше? Допоможу з оформленням замовлення';
+
 /** shouldTouch false means the dialog itself says a touch is out of place; `skipReason` is for the owner, in Russian. */
-export type TouchTexts = { shouldTouch: boolean; skipReason: string; messageText: string };
+export type TouchTexts = { shouldTouch: boolean; skipReason: string; messageText: string; usedDetails?: UsedDetail[] };
 
 export type WriteTouchTextsParams = { clientName: string; messagesNewestFirst: ChatMessage[]; videoCount: number };
 
@@ -27,6 +32,7 @@ export type WriteTouchTextsParams = { clientName: string; messagesNewestFirst: C
  */
 @Injectable()
 export class ClaudeTouchService {
+  private readonly logger = new Logger(ClaudeTouchService.name);
   private readonly client: Anthropic;
 
   constructor(private readonly appConfig: AppConfigService) {
@@ -35,17 +41,29 @@ export class ClaudeTouchService {
 
   async writeTouchTexts(params: WriteTouchTextsParams): Promise<TouchTexts> {
     const recent = params.messagesNewestFirst.slice(0, TRANSCRIPT_MESSAGES);
+    const transcript = formatTranscript(recent);
     const response = await withHardTimeout(
       this.client.messages.create({
         model: this.appConfig.getAnthropicModel(),
         max_tokens: 700,
         tools: [this.buildTool()],
         tool_choice: { type: 'tool', name: TOUCH_TOOL_NAME },
-        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript: formatTranscript(recent), videoCount: params.videoCount }) }],
+        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript, videoCount: params.videoCount }) }],
       }),
       'ClaudeTouchService.writeTouchTexts',
     );
-    return this.extractTexts(response);
+    return this.proveDetails({ texts: this.extractTexts(response), transcript, videoCount: params.videoCount });
+  }
+
+  /** Bag details in the message must be proven by the dialog; otherwise the plain message goes out instead. */
+  private proveDetails(params: { texts: TouchTexts; transcript: string; videoCount: number }): TouchTexts {
+    const { texts } = params;
+    if (!texts.shouldTouch) return texts;
+
+    const unproven = findUnprovenDetails({ messageText: texts.messageText, transcript: params.transcript, usedDetails: texts.usedDetails ?? [] });
+    if (unproven.length === 0) return texts;
+    this.logger.warn(`Touch message had details the dialog does not prove (${unproven.join(', ')}), sending the plain one`);
+    return { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE };
   }
 
   private buildPrompt(params: { clientName: string; transcript: string; videoCount: number }): string {
@@ -60,10 +78,12 @@ export class ClaudeTouchService {
       '— попросила написати пізніше у конкретний час чи день, і він ще не настав;',
       '— це скарга чи конфлікт;',
       '— розмова зовсім не про вибір сумки (обмін, повернення, доставка вже оформленого замовлення);',
-      '— ГОЛОВНЕ заперечення клієнтки — ціна: пише "дорого", питає про знижку, акцію чи розстрочку. Магазин знижок не робить, і',
-      ' стандартне повідомлення про сумку тут не підходить — це для менеджера (skipReason почни зі слів "цена/скидка:");',
-      '— клієнтка поставила конкретне запитання (розмір, заміри, матеріал, наявність, доставка), а менеджерка на нього ще не',
-      ' відповіла (skipReason почни зі слів "нужен ответ менеджера:").',
+      '— ОСТАННЄ заперечення клієнтки — ціна: її останні 1-3 повідомлення про "дорого", знижку, акцію чи розстрочку. Магазин знижок не',
+      ' робить, і стандартне повідомлення про сумку тут не підходить — це для менеджера (skipReason почни зі слів "цена/скидка:"). Якщо про',
+      ' ціну говорили раніше, а потім розмова пішла далі (клієнтка вибирає модель чи колір) — це НЕ причина пропускати;',
+      '— КЛІЄНТКА поставила конкретне запитання (розмір, заміри, матеріал, наявність, доставка), а МЕНЕДЖЕРКА на нього ще не відповіла',
+      ' (skipReason почни зі слів "нужен ответ менеджера:"). УВАГА: коли запитання поставила МЕНЕДЖЕРКА, а клієнтка мовчить — це',
+      ' НОРМАЛЬНА ситуація для дотику і НЕ причина пропускати.',
       'Якщо сумніваєшся — торкайся (shouldTouch=true). У skipReason напиши ОДНУ коротку фразу РОСІЙСЬКОЮ для власниці магазину:',
       'що саме сказала клієнтка (можна з короткою цитатою). Якщо торкаємось, skipReason залиш порожнім.',
       '',
@@ -80,6 +100,8 @@ export class ClaudeTouchService {
       'це про ту саму модель (в розмові їх може бути кілька) — НЕ згадуй, нічого не додумуй і не вгадуй. Нічого, чого не було в переписці:',
       'ні матеріалу, ні кольору, ні розміру, ні країни, ні ціни, ні наявності. Решту хвали ЛИШЕ загальними словами: стильна, елегантна, чудова,',
       'класна, супер. Не згадуй особисті обставини клієнтки (донька, подарунок, бюджет, робота), якщо вона сама про це не писала.',
+      'У полі usedDetails перелічи КОЖНУ особливість сумки, яку ти згадав у повідомленні, з ДОСЛІВНОЮ цитатою з переписки, де про це сказано.',
+      'Якщо особливостей у повідомленні немає — usedDetails порожній масив.',
       'Жодних знижок і акцій: магазин їх не робить. Ніколи не пропонуй "надіслати ще фото" і не тисни.',
       'Мова повідомлення — ЗАВЖДИ ТІЛЬКИ УКРАЇНСЬКА, навіть якщо клієнтка пише російською: жодного російського слова. Звертання на "Ви".',
       'Не більше одного емодзі. Без підпису й без привітання. Усе повідомлення до 350 символів.',
@@ -101,8 +123,13 @@ export class ClaudeTouchService {
           shouldTouch: { type: 'boolean', description: 'false only when the dialog clearly shows a touch is out of place.' },
           skipReason: { type: 'string', description: 'In Russian, for the owner: why not (empty when shouldTouch is true).' },
           messageText: { type: 'string', description: 'In Ukrainian: a warm line, a general compliment, a soft closing question (empty when shouldTouch is false).' },
+          usedDetails: {
+            type: 'array',
+            description: 'Every feature of the bag mentioned in messageText, each with a literal quote from the dialog that states it. Empty if none.',
+            items: { type: 'object', properties: { detail: { type: 'string' }, quote: { type: 'string' } }, required: ['detail', 'quote'] },
+          },
         },
-        required: ['shouldTouch', 'skipReason', 'messageText'],
+        required: ['shouldTouch', 'skipReason', 'messageText', 'usedDetails'],
       },
     };
   }
@@ -119,7 +146,8 @@ export class ClaudeTouchService {
     const messageText = typeof input.messageText === 'string' ? input.messageText.trim() : '';
     const skipReason = typeof input.skipReason === 'string' ? input.skipReason.trim().slice(0, MAX_REASON_LENGTH) : '';
     if (input.shouldTouch === false && skipReason.length > 0) return { shouldTouch: false, skipReason, messageText: '' };
-    if (input.shouldTouch === true && messageText.length > 0 && messageText.length <= MAX_TEXT_LENGTH) return { shouldTouch: true, skipReason: '', messageText };
+    const usedDetails = Array.isArray(input.usedDetails) ? input.usedDetails.filter((used) => typeof used?.detail === 'string' && typeof used?.quote === 'string') : [];
+    if (input.shouldTouch === true && messageText.length > 0 && messageText.length <= MAX_TEXT_LENGTH) return { shouldTouch: true, skipReason: '', messageText, usedDetails };
     throw new Error('Claude returned an unusable touch decision');
   }
 }
