@@ -40,8 +40,13 @@ describe('pickTouchVideos', () => {
     expect(pickTouchVideos({ noteTexts, fileNames: FILES }).found.map((item) => item.fileName)).toEqual(['990318.mp4']);
   });
 
-  it('takes the newest note that has a video when an older article note has none', () => {
-    expect(pickTouchVideos({ noteTexts: ['X9999', 'C1183B'], fileNames: FILES }).found[0].fileName).toBe('С1183B.mp4');
+  it('goes by the newest article note, even when an older note has a video and the newest one has none', () => {
+    const pick = pickTouchVideos({ noteTexts: ['X9999', 'C1183B'], fileNames: FILES });
+    expect(pick).toEqual({ status: 'no-video', articles: ['X9999'], found: [], missing: ['X9999'] });
+  });
+
+  it('takes the newest note even when it is a different article from an older one', () => {
+    expect(pickTouchVideos({ noteTexts: ['C1183B', '990318'], fileNames: FILES }).found.map((item) => item.fileName)).toEqual(['С1183B.mp4']);
   });
 
   it('says the video is missing when articles are written but the folder has none of them', () => {

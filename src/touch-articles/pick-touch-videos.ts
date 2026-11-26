@@ -33,21 +33,18 @@ function readArticleNote(noteText: string): string[] | null {
 }
 
 /**
- * The videos for a chat from its internal notes, newest first. Notes that are not an article list are skipped; the
- * newest one with at least one video wins. Each article gets its newest file, and two articles that sit in one
- * file give that file once. "no-video" means articles were written but the folder has none of them.
+ * The videos for a chat from its internal notes, newest first. Notes that are not an article list are skipped, and the
+ * NEWEST article note decides (owner, 2026-11-26) — even when the folder has no video for it: an older note is an
+ * older choice, possibly another bag. Each article gets its newest file, and two articles that sit in one file give
+ * that file once. "no-video" means the newest note named articles but the folder has none of them.
  */
 export function pickTouchVideos(params: { noteTexts: string[]; fileNames: string[] }): TouchVideosPick {
-  const articleNotes = params.noteTexts.map(readArticleNote).filter((articles): articles is string[] => articles !== null);
-  if (articleNotes.length === 0) return { status: 'no-article', articles: [], found: [], missing: [] };
+  const newestNote = params.noteTexts.map(readArticleNote).find((articles): articles is string[] => articles !== null);
+  if (newestNote === undefined) return { status: 'no-article', articles: [], found: [], missing: [] };
 
-  for (const articles of articleNotes) {
-    const matched = articles.map((article) => ({ article, fileName: chooseNewestFile(findMatchingFiles(article, params.fileNames)) }));
-    const found = matched.filter((item): item is FoundVideo => item.fileName !== undefined);
-    const distinct = found.filter((item, index) => found.findIndex((other) => other.fileName === item.fileName) === index);
-    if (distinct.length > 0) {
-      return { status: 'found', articles, found: distinct.slice(0, MAX_TOUCH_VIDEOS), missing: matched.filter((item) => item.fileName === undefined).map((item) => item.article) };
-    }
-  }
-  return { status: 'no-video', articles: articleNotes[0], found: [], missing: articleNotes[0] };
+  const matched = newestNote.map((article) => ({ article, fileName: chooseNewestFile(findMatchingFiles(article, params.fileNames)) }));
+  const found = matched.filter((item): item is FoundVideo => item.fileName !== undefined);
+  const distinct = found.filter((item, index) => found.findIndex((other) => other.fileName === item.fileName) === index);
+  const missing = matched.filter((item) => item.fileName === undefined).map((item) => item.article);
+  return { status: distinct.length > 0 ? 'found' : 'no-video', articles: newestNote, found: distinct.slice(0, MAX_TOUCH_VIDEOS), missing };
 }
