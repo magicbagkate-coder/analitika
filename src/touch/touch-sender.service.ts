@@ -4,8 +4,8 @@ import { SitniksChatSendService } from '../sitniks-chat-send/sitniks-chat-send.s
 import { TelegramService } from '../telegram/telegram.service';
 import { TouchLogService } from '../touch-log/touch-log.service';
 import { TouchVideoStoreService } from '../touch-video-library/touch-video-store.service';
-import { MESSAGE_GAP_MS, TEST_STATUS, VIDEO_CONFIRM_INTERVAL_MS, VIDEO_CONFIRM_MS } from './touch.constants';
-import { formatSendTrouble, formatTouchSent } from './touch-messages';
+import { DOUBLE_TOUCH_WINDOW_HOURS, MESSAGE_GAP_MS, TEST_STATUS, VIDEO_CONFIRM_INTERVAL_MS, VIDEO_CONFIRM_MS } from './touch.constants';
+import { formatDoubleTouchRefused, formatSendTrouble, formatTouchSent } from './touch-messages';
 import { getTouchTag } from './touch-time';
 import { TouchTaggerService } from './touch-tagger.service';
 import { hasAccountVideoSince } from './touch-video-confirm';
@@ -53,6 +53,7 @@ export class TouchSenderService {
     const { attempt } = params;
     const videos = attempt.videos ?? [];
     if (videos.length === 0 || !attempt.messageText) throw new Error(`Touch ${attempt.id} has no plan to send`);
+    if (await this.refuseDoubleTouch(attempt)) return;
 
     for (const [index, video] of videos.entries()) {
       if (index > 0) await this.delay(this.messageGapMs);
@@ -68,6 +69,18 @@ export class TouchSenderService {
     // Every status is counted for the statistics except the test one (owner, 2026-11-27); the status tells them apart.
     if (attempt.sourceStatus !== TEST_STATUS) await this.touchTaggerService.tagTouch({ chatId: attempt.chatId, tag: getTouchTag(new Date()) });
     if (params.announce) await this.tryTell(formatTouchSent({ chatId: attempt.chatId, clientName: attempt.clientName, videoFileNames: videos.map((video) => video.fileName) }));
+  }
+
+  /** The last guard against a second touch to one chat: whatever led here, the chat that got a touch lately gets none. */
+  private async refuseDoubleTouch(attempt: TouchAttemptEntity): Promise<boolean> {
+    if (attempt.sourceStatus === TEST_STATUS) return false; // the staff set test chats up again on purpose
+    const earlier = await this.touchLogService.findLatestMadeTouch(attempt.chatId);
+    if (!earlier?.touchedAt || earlier.id === attempt.id) return false;
+    if (Date.now() - earlier.touchedAt.getTime() > DOUBLE_TOUCH_WINDOW_HOURS * 60 * 60 * 1000) return false;
+
+    await this.touchLogService.setState({ id: attempt.id, state: 'stale' });
+    await this.tryTell(formatDoubleTouchRefused({ chatId: attempt.chatId, clientName: attempt.clientName, earlierAt: earlier.touchedAt }));
+    return true;
   }
 
   /** One video: sent, then awaited in the chat. Returns what went wrong, or null when it has arrived. */

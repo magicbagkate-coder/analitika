@@ -30,6 +30,9 @@ export const NOTES_TO_READ = 30;
 export const MESSAGES_TO_READ = 50;
 
 /** Tags that count the touches for the statistics (owner, 2026-11-27): a touch before 16:00 is the first, from 16:00 the second. */
+/** A chat that got a touch gets no second one for this long, whatever else says so (owner, 2026-11-27: "никому два раза"). */
+export const DOUBLE_TOUCH_WINDOW_HOURS = 24;
+
 export const TOUCH_TAG_FIRST = 'касание 1';
 export const TOUCH_TAG_SECOND = 'касание 2';
 export const SECOND_TOUCH_START_HOUR = 16;

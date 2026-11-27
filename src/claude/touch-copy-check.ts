@@ -2,7 +2,7 @@ const MIN_COPIED_WORDS = 4;
 
 // The owner's own wording that every touch may repeat: the opening and the closing question.
 const STANDARD_PHRASES = [
-  'Знайшла для Вас чудовий відеоогляд цієї сумки',
+  'Знайшла для Вас чудовий відеоогляд',
   'Знайшла для Вас кілька чудових варіантів відправляю відеоогляди',
   'Чи хотіли б Ви обрати її для себе',
   'Якщо так допоможу з оформленням замовлення',
@@ -14,6 +14,9 @@ const STANDARD_PHRASES = [
 // Words the owner does not want in a touch (2026-11-27): diminutives ("сумка" and "модель", never "сумочка", "моделька")
 // and "виглядає" ("вона якісна", not "виглядає дуже якісно").
 const BANNED_STEMS = ['сумоч', 'модельк', 'модельок', 'рюкзачок', 'рюкзачк', 'гаманечк', 'клатчик', 'виглядає', 'виглядают', 'виглядат'];
+
+// A product noun used in a message must be the one the dialog itself uses: a backpack is not "сумка" (owner, 2026-11-27).
+const PRODUCT_STEMS = ['сумк', 'рюкзак', 'гаманц', 'гаманец', 'клатч', 'візитн', 'косметичк', 'шопер', 'кросбод', 'бананк'];
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -39,4 +42,11 @@ export function findCopiedPhrase(params: { messageText: string; transcript: stri
 export function findBannedWord(messageText: string): string | null {
   const words = normalize(messageText).split(' ');
   return words.find((word) => BANNED_STEMS.some((stem) => word.startsWith(stem))) ?? null;
+}
+
+/** The first product noun of the message that the dialog never uses (so the bag is probably called by the wrong name), or null. */
+export function findUnknownProduct(params: { messageText: string; transcript: string }): string | null {
+  const dialog = normalize(params.transcript);
+  const words = normalize(params.messageText).split(' ');
+  return words.find((word) => PRODUCT_STEMS.some((stem) => word.startsWith(stem) && !dialog.includes(stem))) ?? null;
 }

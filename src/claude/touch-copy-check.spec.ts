@@ -1,4 +1,4 @@
-import { findBannedWord, findCopiedPhrase } from './touch-copy-check';
+import { findBannedWord, findCopiedPhrase, findUnknownProduct } from './touch-copy-check';
 
 const TRANSCRIPT = 'Менеджер: Елегантна шкіряна сумка — чудове поєднання комфорту, стилю та практичності. 😍 Бажаєте замовити?';
 
@@ -33,5 +33,18 @@ describe('findBannedWord', () => {
 
   it('lets the plain words through', () => {
     expect(findBannedWord('Знайшла для Вас чудовий відеоогляд цієї сумки 🤍 Ця модель створена для Вас')).toBeNull();
+  });
+});
+
+describe('findUnknownProduct', () => {
+  it('flags a bag when the dialog speaks of a backpack', () => {
+    const transcript = 'Менеджер: Рюкзак водонепроникний і дуже зручний. Клієнтка: Який колір є?';
+    expect(findUnknownProduct({ messageText: 'Знайшла для Вас чудовий відеоогляд цієї сумки', transcript })).toBe('сумки');
+  });
+
+  it('lets the noun through when the dialog uses it, and the neutral word always', () => {
+    const transcript = 'Менеджер: Рюкзак водонепроникний. Клієнтка: Дякую';
+    expect(findUnknownProduct({ messageText: 'Знайшла для Вас чудовий відеоогляд цього рюкзака', transcript })).toBeNull();
+    expect(findUnknownProduct({ messageText: 'Знайшла для Вас чудовий відеоогляд цієї моделі', transcript })).toBeNull();
   });
 });

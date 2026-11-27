@@ -58,6 +58,12 @@ export function formatSendTrouble(params: ChatRef & { step: string; outcome: str
   return `⚠️<b>Проблема с касанием</b>\nКлиент: ${chatLine(params)}\nШаг: ${escapeHtml(params.step)} (ответ: ${escapeHtml(params.detail)})\n${verdict} Проверьте чат.`;
 }
 
+/** A second touch to the same chat is stopped at the last moment, whoever asked for it. */
+export function formatDoubleTouchRefused(params: ChatRef & { earlierAt: Date }): string {
+  const time = params.earlierAt.toLocaleString('ru-RU', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `🛑<b>Второе касание не отправлено</b>\nКлиент: ${chatLine(params)}\nЭтому чату касание уже ушло (${escapeHtml(time)}), повторно бот не пишет.`;
+}
+
 export function formatTouchSent(params: ChatRef & { videoFileNames: string[] }): string {
   return `✅ Касание отправлено: ${chatLine(params)}, видео ${escapeHtml(params.videoFileNames.join(', '))}`;
 }

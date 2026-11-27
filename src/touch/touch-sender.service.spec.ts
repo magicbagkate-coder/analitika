@@ -23,7 +23,7 @@ function freshVideo(fileId: string): object {
 function build(results: Outcome[], chatMessages: object[] = [freshVideo('FILE1'), freshVideo('A1'), freshVideo('B2'), MANAGER_MESSAGE]) {
   const send = jest.fn();
   results.forEach((outcome) => send.mockResolvedValueOnce({ outcome, detail: outcome === 'sent' ? 'accepted' : '504' }));
-  const log = { finishSend: jest.fn().mockResolvedValue(undefined) };
+  const log = { finishSend: jest.fn().mockResolvedValue(undefined), findLatestMadeTouch: jest.fn().mockResolvedValue(null), setState: jest.fn().mockResolvedValue(undefined) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
   const listMessages = jest.fn().mockResolvedValue({ data: chatMessages });
   const store = { buildSendUrl: jest.fn(async (fileId: string) => `https://server.example/touch-videos/${fileId}.mp4`) };
@@ -40,6 +40,24 @@ function sentKinds(send: jest.Mock): string[] {
 }
 
 describe('TouchSenderService', () => {
+  it('does not send a second touch to a chat that got one within a day, and tells the owner', async () => {
+    const { service, send, log, telegram } = build(['sent', 'sent']);
+    log.findLatestMadeTouch.mockResolvedValue({ id: 'other', touchedAt: new Date(Date.now() - 3 * 60 * 60 * 1000) });
+    await service.sendTouch({ attempt: ATTEMPT, announce: false });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(log.setState).toHaveBeenCalledWith({ id: 'a1', state: 'stale' });
+    expect(telegram.sendOwnerMessage).toHaveBeenCalledWith(expect.stringContaining('Второе касание не отправлено'));
+  });
+
+  it('sends when the earlier touch to the chat is older than a day', async () => {
+    const { service, send, log } = build(['sent', 'sent']);
+    log.findLatestMadeTouch.mockResolvedValue({ id: 'other', touchedAt: new Date(Date.now() - 30 * 60 * 60 * 1000) });
+    await service.sendTouch({ attempt: ATTEMPT, announce: false });
+
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   it('tags a touch made to a real client with the statistics tag', async () => {
     const attempt = { ...ATTEMPT, sourceStatus: 'Вибір товару' } as unknown as TouchAttemptEntity;
     const { service, tagger } = build(['sent', 'sent']);
