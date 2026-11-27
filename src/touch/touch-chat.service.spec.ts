@@ -12,7 +12,7 @@ function managerMessage(params: { viewed: boolean; minutesAgo: number }): ChatMe
 type Setup = { messages: ChatMessage[]; mode?: 'live' | 'dry-run'; attempt?: object | null; madeTouch?: object | null; approvalOff?: boolean; plan?: object };
 
 function build(setup: Setup) {
-  const attemptRow = { id: 'a1', chatId: 'c1', anchorMessageId: 'm1', clientName: 'Іра', sourceStatus: 'Вибір товару', state: 'watching', missingAlertedAt: null, ...PLAN, ...(setup.attempt ?? {}) };
+  const attemptRow = { id: 'a1', chatId: 'c1', anchorMessageId: 'm1', clientName: 'Іра', sourceStatus: 'Вибір товару', state: 'watching', missingAlertedAt: null, missingAlertedKey: null, ...PLAN, ...(setup.attempt ?? {}) };
   const log = {
     findLatestMadeTouch: jest.fn().mockResolvedValue(setup.madeTouch ?? null),
     findOpenForChat: jest.fn().mockResolvedValue([]),
@@ -118,10 +118,32 @@ describe('TouchChatService', () => {
   it('does not name the same chat twice', async () => {
     const { service } = build({
       messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
-      attempt: { ...READ_LONG_AGO, missingAlertedAt: new Date() },
+      attempt: { ...READ_LONG_AGO, missingAlertedAt: new Date(), missingAlertedKey: 'no-video:X9999' },
       plan: { status: 'no-video', missing: ['X9999'], plan: null },
     });
     expect(await service.processChat({ chat: CHAT, pass: 'regular' })).toMatchObject({ noArticle: false, noVideo: [], skipped: null });
+  });
+
+  it('names the chat again when the articles in the note changed', async () => {
+    const { service, log } = build({
+      messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
+      attempt: { ...READ_LONG_AGO, missingAlertedAt: new Date(), missingAlertedKey: 'no-article:' },
+      plan: { status: 'no-video', missing: ['C1183H', 'C0944H'], plan: null },
+    });
+    const result = await service.processChat({ chat: CHAT, pass: 'regular' });
+
+    expect(result.noVideo.map((item) => item.article)).toEqual(['C1183H', 'C0944H']);
+    expect(log.markMissingAlerted).toHaveBeenCalledWith({ id: 'a1', key: 'no-video:C0944H,C1183H' });
+  });
+
+  it('does not repeat an old "no article" alert from before the key existed', async () => {
+    const { service, log } = build({
+      messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
+      attempt: { ...READ_LONG_AGO, missingAlertedAt: new Date(), missingAlertedKey: null },
+      plan: { status: 'no-article', missing: [], plan: null },
+    });
+    expect(await service.processChat({ chat: CHAT, pass: 'regular' })).toMatchObject({ noArticle: false });
+    expect(log.markMissingAlerted).not.toHaveBeenCalled();
   });
 
   it('sends the videos that exist and names the articles that have none, once', async () => {

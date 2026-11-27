@@ -29,6 +29,7 @@ export type ProcessChatResult = {
   skipped: SkippedChat | null;
 };
 
+const NO_ARTICLE_KEY = 'no-article:';
 const NOTHING_HAPPENED: Omit<ProcessChatResult, 'hasUnansweredTouch'> = { touched: false, noArticle: false, noVideo: [], skipped: null };
 
 /**
@@ -132,15 +133,23 @@ export class TouchChatService {
     );
   }
 
-  /** Each chat is named to the owner once per anchor; the caller sends all names together. */
+  /** A chat is named to the owner once per anchor and per list of missing articles — a changed note is named again; the caller sends all names together. */
   private async reportMissing(params: { attempt: TouchAttemptEntity; planned: TouchPlanResult }): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
     const { attempt, planned } = params;
     const nothingToSay = planned.status === 'ready' && planned.missing.length === 0;
-    if (nothingToSay || attempt.missingAlertedAt) return NOTHING_HAPPENED;
-    await this.touchLogService.markMissingAlerted(attempt.id);
+    const key = `${planned.status}:${[...planned.missing].sort().join(',')}`;
+    if (nothingToSay || this.wasAlerted({ attempt, key })) return NOTHING_HAPPENED;
+    await this.touchLogService.markMissingAlerted({ id: attempt.id, key });
 
     const chat = { chatId: attempt.chatId, clientName: attempt.clientName };
     return { touched: false, noArticle: planned.status === 'no-article', noVideo: planned.missing.map((article) => ({ ...chat, article })), skipped: null };
+  }
+
+  /** Alerts sent before the key existed only ever named "no article", so that is all a row without a key counts as. */
+  private wasAlerted(params: { attempt: TouchAttemptEntity; key: string }): boolean {
+    const { attempt, key } = params;
+    if (attempt.missingAlertedKey) return attempt.missingAlertedKey === key;
+    return attempt.missingAlertedAt !== null && key === NO_ARTICLE_KEY;
   }
 
   /** The dialog says no touch: the reason is kept, and shown to the owner while she still checks these decisions. */

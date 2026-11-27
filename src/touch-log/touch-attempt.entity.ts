@@ -55,6 +55,10 @@ export class TouchAttemptEntity {
   @Column({ type: 'timestamp', nullable: true })
   missingAlertedAt!: Date | null;
 
+  /** What exactly she was told (the status and the missing articles): a changed note is told again. */
+  @Column({ type: 'text', nullable: true })
+  missingAlertedKey!: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   touchedAt!: Date | null;
 

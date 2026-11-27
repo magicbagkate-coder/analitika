@@ -38,8 +38,8 @@ export class TouchLogService {
     await this.repository.update(params.id, { readSeenAt: params.readSeenAt });
   }
 
-  async markMissingAlerted(id: string): Promise<void> {
-    await this.repository.update(id, { missingAlertedAt: new Date() });
+  async markMissingAlerted(params: { id: string; key: string }): Promise<void> {
+    await this.repository.update(params.id, { missingAlertedAt: new Date(), missingAlertedKey: params.key });
   }
 
   async savePlan(params: { id: string; plan: TouchPlan }): Promise<void> {
