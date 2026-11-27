@@ -86,6 +86,18 @@ describe('TouchChatService', () => {
     expect(result.hasUnansweredTouch).toBe(true);
   });
 
+  it('stays silent about a new-bot chat that has no article', async () => {
+    const { service, log } = build({
+      messages: [managerMessage({ viewed: true, minutesAgo: 120 })],
+      attempt: { ...READ_LONG_AGO, sourceStatus: 'Новий БОТ' },
+      plan: { status: 'no-article', missing: [], plan: null },
+    });
+    const result = await service.processChat({ chat: { ...CHAT, status: 'Новий БОТ' }, pass: 'regular' });
+
+    expect(result).toMatchObject({ touched: false, noArticle: false });
+    expect(log.markMissingAlerted).not.toHaveBeenCalled();
+  });
+
   it('asks the owner for a touch in the new-bot status as well', async () => {
     const { service, approval, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: { ...READ_LONG_AGO, sourceStatus: 'Новий БОТ' } });
     await service.processChat({ chat: { ...CHAT, status: 'Новий БОТ' }, pass: 'regular' });

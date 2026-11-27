@@ -17,6 +17,8 @@ export type ChatListItem = {
   lastMessageCreatedAt: string;
   userName: string;
   userNickName?: string;
+  /** The client's own id on the channel: the `sentBy` of every message the client wrote (checked live, 2026-11-27). */
+  userId?: string | number;
   /** The channel the chat came from: 'instagram', 'facebook', 'telegram_private', 'viber_private'... */
   initialSource?: string;
 };

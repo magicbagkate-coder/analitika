@@ -3,7 +3,7 @@ import { AppConfigService } from '../config/app-config.service';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { TouchLogService } from '../touch-log/touch-log.service';
-import { MESSAGES_TO_READ, TEST_STATUS } from './touch.constants';
+import { MESSAGES_TO_READ, NEW_BOT_STATUS, TEST_STATUS } from './touch.constants';
 import { readChatTouchFacts, type ChatTouchFacts } from './touch-chat-facts';
 import { decideTouch, type TouchDecision } from './touch-decision';
 import { formatDryRunTouch, type MissingVideoChat, type SkippedChat } from './touch-messages';
@@ -52,7 +52,7 @@ export class TouchChatService {
 
   async processChat(params: ProcessChatParams): Promise<ProcessChatResult> {
     const response = await this.sitniksChatMessagesService.listMessages({ chatId: params.chat.id, limit: MESSAGES_TO_READ });
-    const facts = readChatTouchFacts(response.data);
+    const facts = readChatTouchFacts(response.data, { clientId: params.chat.userId === undefined ? undefined : String(params.chat.userId), botSpeaksForShop: params.chat.status === NEW_BOT_STATUS });
     const hasUnansweredTouch = await this.hasUnansweredTouch({ chatId: params.chat.id, facts });
     await this.retireOutdatedAttempts({ chatId: params.chat.id, currentAnchor: facts.anchorMessageId });
     if (facts.anchorMessageId === null) return { hasUnansweredTouch, ...NOTHING_HAPPENED };
@@ -137,6 +137,8 @@ export class TouchChatService {
   private async reportMissing(params: { attempt: TouchAttemptEntity; planned: TouchPlanResult }): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
     const { attempt, planned } = params;
     const nothingToSay = planned.status === 'ready' && planned.missing.length === 0;
+    // Most new-bot chats never get an article: naming each of them would bury the owner (2026-11-27).
+    if (planned.status === 'no-article' && attempt.sourceStatus === NEW_BOT_STATUS) return NOTHING_HAPPENED;
     const key = `${planned.status}:${[...planned.missing].sort().join(',')}`;
     if (nothingToSay || this.wasAlerted({ attempt, key })) return NOTHING_HAPPENED;
     await this.touchLogService.markMissingAlerted({ id: attempt.id, key });
