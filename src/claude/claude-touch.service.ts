@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 import { formatTranscript } from './transcript-formatter';
-import { findCopiedPhrase } from './touch-copy-check';
+import { findBannedWord, findCopiedPhrase } from './touch-copy-check';
 import { findUnprovenDetails, type UsedDetail } from './touch-message-check';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
@@ -15,10 +15,10 @@ const TRANSCRIPT_MESSAGES = 30;
 const MANY_VIDEOS_RULE =
   'Надіслано {count} відео — це кілька варіантів сумочок. Пиши про варіанти: починай "Знайшла для Вас кілька чудових варіантів — ' +
   'відправляю відеоогляди", похвали їх загалом, а запитання зроби про вибір: "Який варіант Вам сподобався найбільше? Допоможу з ' +
-  'оформленням замовлення". Не пиши "ця сумочка" в однині.';
+  'оформленням замовлення". Не пиши "ця сумка" в однині.';
 
 // Sent instead of a message whose bag details the dialog does not prove: no detail at all, only general praise.
-const PLAIN_MESSAGE_ONE = 'Знайшла для Вас чудовий відеоогляд цієї сумочки 🤍 Вона дуже стильна та елегантна. Чи хотіли б Ви обрати її для себе? Якщо так, допоможу з оформленням замовлення';
+const PLAIN_MESSAGE_ONE = 'Знайшла для Вас чудовий відеоогляд цієї сумки 🤍 Вона дуже стильна та елегантна. Чи хотіли б Ви обрати її для себе? Якщо так, допоможу з оформленням замовлення';
 const PLAIN_MESSAGE_MANY = 'Знайшла для Вас кілька чудових варіантів — відправляю відеоогляди 🤍 Які ж вони стильні! Який варіант Вам сподобався найбільше? Допоможу з оформленням замовлення';
 
 // The owner pressed "touch anyway": step 1 is settled, and a price or a pending question must not make the text clumsy.
@@ -84,13 +84,21 @@ export class ClaudeTouchService {
   /** The manager's own description of the bag must not come back in the touch (owner, 2026-11-27): one rewrite, then the plain message. */
   private async writeWithoutCopying(params: { prompt: string; transcript: string; videoCount: number }): Promise<TouchTexts> {
     const first = await this.askWriter(params.prompt);
-    const copied = first.shouldTouch ? findCopiedPhrase({ messageText: first.messageText, transcript: params.transcript }) : null;
-    if (copied === null) return first;
+    const fault = first.shouldTouch ? this.findFault({ texts: first, transcript: params.transcript }) : null;
+    if (fault === null) return first;
 
-    const second = await this.askWriter(`${params.prompt}\n\nУВАГА: у твоїй попередній версії була дослівна фраза з переписки: "${copied}". Напиши повідомлення ЗАНОВО, своїми словами, без жодної фрази менеджерки.`);
-    if (!second.shouldTouch || findCopiedPhrase({ messageText: second.messageText, transcript: params.transcript }) === null) return second;
-    this.logger.warn(`Touch message still copies the dialog ("${copied}"), sending the plain one`);
+    const second = await this.askWriter(`${params.prompt}\n\nУВАГА: у твоїй попередній версії ${fault}. Напиши повідомлення ЗАНОВО: своїми словами, без фраз менеджерки, без пестливих слів (кажи "сумка", "модель") і без слова "виглядає".`);
+    if (!second.shouldTouch || this.findFault({ texts: second, transcript: params.transcript }) === null) return second;
+    this.logger.warn(`Touch message still has a fault (${fault}), sending the plain one`);
     return { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE };
+  }
+
+  /** What is wrong with a written message, in words for the writer: a phrase copied from the dialog, or a diminutive. */
+  private findFault(params: { texts: TouchTexts; transcript: string }): string | null {
+    const copied = findCopiedPhrase({ messageText: params.texts.messageText, transcript: params.transcript });
+    if (copied !== null) return `була дослівна фраза з переписки: "${copied}"`;
+    const banned = findBannedWord(params.texts.messageText);
+    return banned === null ? null : `було заборонене слово "${banned}"`;
   }
 
   /** Bag details in the message must be proven by the dialog; otherwise the plain message goes out instead. */
@@ -127,13 +135,13 @@ export class ClaudeTouchService {
       'що саме сказала клієнтка (можна з короткою цитатою). Якщо торкаємось, skipReason залиш порожнім.',
       '',
       'КРОК 2 (лише якщо торкаємось). Напиши ОДНЕ повідомлення, яке піде одразу після відео.',
-      'ЗВИЧАЙНИЙ тон: тепла фраза, коротка щира похвала сумочки і м\x27яке закрите запитання в кінці — усе разом, в одному тексті.',
-      'Починай так: "Знайшла для Вас чудовий відеоогляд цієї сумочки". Закінчуй одним м\x27яким запитанням. Зразок: "Чи хотіли б Ви',
+      'ЗВИЧАЙНИЙ тон: тепла фраза, коротка щира похвала сумки і м\x27яке закрите запитання в кінці — усе разом, в одному тексті.',
+      'Починай так: "Знайшла для Вас чудовий відеоогляд цієї сумки". Закінчуй одним м\x27яким запитанням. Зразок: "Чи хотіли б Ви',
       'обрати її для себе? Якщо так, допоможу з оформленням замовлення".',
-      'КЛІЄНТКА СКАЗАЛА "подумаю" ("дякую, подумаю", "я подумаю"): після "Знайшла для Вас чудовий відеоогляд цієї сумочки 🤍" став ОДНЕ запитання:',
+      'КЛІЄНТКА СКАЗАЛА "подумаю" ("дякую, подумаю", "я подумаю"): після "Знайшла для Вас чудовий відеоогляд цієї сумки 🤍" став ОДНЕ запитання:',
       '"Чи вдалося Вам визначитися з вибором?" (слова навколо можна трохи змінити). Без "хотіли б обрати" і без "допоможу з оформленням".',
       'ДУЖЕ М\x27ЯКИЙ тон — коли клієнтка відповіла "поки ні", "поки все", "поки не готова" (не остаточна відмова): без запитання',
-      'про замовлення і без тиску. Зразок: "Знайшла для Вас відеоогляд цієї сумочки 🤍 Раптом буде цікаво — подивіться, коли буде зручно. Якщо',
+      'про замовлення і без тиску. Зразок: "Знайшла для Вас відеоогляд цієї сумки 🤍 Раптом буде цікаво — подивіться, коли буде зручно. Якщо',
       'виникнуть запитання, я на зв\x27язку".',
       'ДЕТАЛІ ЛИШЕ З ПЕРЕПИСКИ. Можна згадати особливість сумки (матеріал, шкіра чи замша, колір, розмір, країну, форму), АЛЕ ТІЛЬКИ ту, яку',
       'менеджерка або клієнтка ПРЯМО написали вище в діалозі саме про ту модель, яку клієнтка зараз розглядає (наприклад, менеджерка',
@@ -145,16 +153,19 @@ export class ClaudeTouchService {
       'Якщо особливостей у повідомленні немає — usedDetails порожній масив.',
       'Жодних знижок і акцій: магазин їх не робить. Ніколи не пропонуй "надіслати ще фото" і не тисни.',
       'Мова повідомлення — ЗАВЖДИ ТІЛЬКИ УКРАЇНСЬКА, навіть якщо клієнтка пише російською: жодного російського слова. Звертання на "Ви".',
+      'ЖОДНИХ ЗМЕНШЕНО-ПЕСТЛИВИХ СЛІВ (власниця, 2026-11-27): не "сумочка", "моделька", "рюкзачок" — а "сумка", "модель", "рюкзак".',
+      'НЕ ПИШИ "виглядає" (власниця, 2026-11-27): не "виглядає дуже якісно", а прямо — "вона якісна". Не вигадуй відчуттів і властивостей',
+      '("приємна на дотик", "м\x27яка", "щільна"), якщо їх немає в переписці.',
       'НЕ КОПІЮЙ МЕНЕДЖЕРКУ. Не бери готових фраз з її опису сумки (на кшталт "елегантна шкіряна сумка — чудове поєднання комфорту, стилю та',
       'практичності"): клієнтка це вже читала, і повтор виглядає як лінь. Якщо згадуєш особливість — одним-двома своїми словами, інакше, ніж менеджерка.',
-      'КОЖНЕ ПОВІДОМЛЕННЯ ЗВУЧИТЬ ПО-СВОЄМУ. Початок "Знайшла для Вас чудовий відеоогляд цієї сумочки" можна лишити, а ДАЛІ — нова жива думка,',
+      'КОЖНЕ ПОВІДОМЛЕННЯ ЗВУЧИТЬ ПО-СВОЄМУ. Початок "Знайшла для Вас чудовий відеоогляд цієї сумки" можна лишити, а ДАЛІ — нова жива думка,',
       'інші слова й інше закінчення, ніж у вже надісланих іншим клієнткам (список нижче). Тон як у виправленнях власниці: коротко, тепло, по-людськи,',
       'не шаблонно ("створена для вас", "створена щоб вражати", "допомогти з оформленням замовлення?").',
       'Не більше двох емодзі. Без підпису й без привітання. Усе повідомлення до 350 символів.',
       '',
       ...this.buildExamplesBlock(params.examples),
       ...this.buildRecentBlock(params.recentTexts),
-      params.videoCount > 1 ? MANY_VIDEOS_RULE.replace('{count}', String(params.videoCount)) : 'Надіслано одне відео — пиши про одну сумочку.',
+      params.videoCount > 1 ? MANY_VIDEOS_RULE.replace('{count}', String(params.videoCount)) : 'Надіслано одне відео — пиши про одну сумку.',
       '',
       `Клієнтка: ${params.clientName}`,
       `ПЕРЕПИСКА:\n${params.transcript}`,
@@ -167,6 +178,7 @@ export class ClaudeTouchService {
     const lines = examples.map((example) => `Було (написав бот): "${example.original}"\nСтало (власниця виправила): "${example.corrected}"`);
     return [
       'ПРИКЛАДИ ВИПРАВЛЕНЬ ВЛАСНИЦІ. Вона переписувала повідомлення бота. Бери з них її слова, тон і довжину, але не копіюй дослівно, якщо ситуація інша,',
+      'і не переймай пестливі слова з них ("сумочка"): завжди "сумка", "модель",',
       'і НЕ переноси особливості сумки, яких немає в цій переписці.',
       ...lines,
       '',

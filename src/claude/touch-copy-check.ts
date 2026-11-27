@@ -2,7 +2,7 @@ const MIN_COPIED_WORDS = 4;
 
 // The owner's own wording that every touch may repeat: the opening and the closing question.
 const STANDARD_PHRASES = [
-  'Знайшла для Вас чудовий відеоогляд цієї сумочки',
+  'Знайшла для Вас чудовий відеоогляд цієї сумки',
   'Знайшла для Вас кілька чудових варіантів відправляю відеоогляди',
   'Чи хотіли б Ви обрати її для себе',
   'Якщо так допоможу з оформленням замовлення',
@@ -10,6 +10,10 @@ const STANDARD_PHRASES = [
   'Який варіант Вам сподобався найбільше',
   'Чи вдалося Вам визначитися з вибором',
 ].map(normalize);
+
+// Words the owner does not want in a touch (2026-11-27): diminutives ("сумка" and "модель", never "сумочка", "моделька")
+// and "виглядає" ("вона якісна", not "виглядає дуже якісно").
+const BANNED_STEMS = ['сумоч', 'модельк', 'модельок', 'рюкзачок', 'рюкзачк', 'гаманечк', 'клатчик', 'виглядає', 'виглядают', 'виглядат'];
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -29,4 +33,10 @@ export function findCopiedPhrase(params: { messageText: string; transcript: stri
   const withoutStandard = STANDARD_PHRASES.reduce((text, phrase) => text.split(phrase).join(' | '), normalize(params.messageText));
   const runs = withoutStandard.split('|').flatMap(wordRuns);
   return runs.find((run) => dialog.includes(` ${run} `)) ?? null;
+}
+
+/** The first word of the message the owner does not want (a diminutive, "виглядає"), or null. */
+export function findBannedWord(messageText: string): string | null {
+  const words = normalize(messageText).split(' ');
+  return words.find((word) => BANNED_STEMS.some((stem) => word.startsWith(stem))) ?? null;
 }
