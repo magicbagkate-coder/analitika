@@ -10,8 +10,12 @@ export const CLOSING_CUTOFF_HOUR = 22;
 /** A chat whose last message is older than this is not touched — the morning pass closes it instead. */
 export const MAX_TOUCH_AGE_HOURS = 24;
 
-/** The owner approves this many touches by hand, then "поставим на поток" (2026-11-20). */
-export const APPROVED_TOUCHES_REQUIRED = 30;
+/**
+ * Statuses with their own rules (owner, 2026-11-27): the test status is never counted and never needs approval; a client
+ * in the new-bot status is touched but never moved to the closed status in the morning.
+ */
+export const TEST_STATUS = 'ТЕСТ КАТЯ';
+export const NEW_BOT_STATUS = 'Новий БОТ';
 
 export const TICK_INTERVAL_MS = 10 * 60 * 1000;
 export const CLOCK_CHECK_MS = 60 * 1000;

@@ -50,9 +50,15 @@ export class AppConfigService {
     return mode === 'live' || mode === 'dry-run' ? mode : 'off';
   }
 
-  /** The status the touch bot works in; set to the test status to try it without touching real clients. */
-  getTouchTargetStatus(): string {
-    return this.configService.get<string>('TOUCH_TARGET_STATUS') || 'Вибір товару';
+  /** The statuses the touch bot works in, comma-separated; set to the test status to try it without touching real clients. */
+  getTouchTargetStatuses(): string[] {
+    const value = this.configService.get<string>('TOUCH_TARGET_STATUS') || 'Вибір товару';
+    return value.split(',').map((status) => status.trim()).filter((status) => status.length > 0);
+  }
+
+  /** Every touch in a real status waits for the owner's button until she says «начали» (owner, 2026-11-27): TOUCH_APPROVAL_REQUIRED=false then. */
+  getTouchApprovalRequired(): boolean {
+    return this.configService.get<string>('TOUCH_APPROVAL_REQUIRED') !== 'false';
   }
 
   getTouchClosedStatus(): string {

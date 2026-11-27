@@ -5,13 +5,15 @@ import { SitniksChatStatusService } from '../sitniks-chat-status/sitniks-chat-st
 import { TelegramOwnerBotService } from '../telegram/telegram-owner-bot.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { listChatsInStatus } from './list-chats-in-status';
-import { DELAY_BETWEEN_REQUESTS_MS } from './touch.constants';
+import { DELAY_BETWEEN_REQUESTS_MS, NEW_BOT_STATUS } from './touch.constants';
 import { TouchChatService } from './touch-chat.service';
 import { sendMissingMediaReport } from './send-missing-media-report';
 import { formatMorningSummary, type MorningSummary } from './touch-messages';
 import { emptyMissingMedia, hasMissingMedia, recordMissingMedia } from './touch-missing';
 import { getClosingCutoff } from './touch-time';
 import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
+
+type MissingMediaState = ReturnType<typeof emptyMissingMedia>;
 
 /**
  * The 08:00 pass (owner, 2026-11-25). First every chat whose last message came before 22:00 of the previous
@@ -33,26 +35,31 @@ export class TouchMorningService {
   ) {}
 
   async runMorningPass(): Promise<void> {
-    const cutoff = getClosingCutoff(new Date());
-    const chats = await listChatsInStatus({ chatListService: this.sitniksChatListService, status: this.appConfig.getTouchTargetStatus() });
-    const isOld = (chat: ChatListItem): boolean => new Date(chat.lastMessageCreatedAt).getTime() < cutoff.getTime();
-
     const summary: MorningSummary = { closed: 0, touched: 0, failed: 0, dryRun: this.appConfig.getTouchMode() === 'dry-run' };
-    for (const chat of chats.filter(isOld)) await this.closeChat({ chat, summary });
-
     const missing = emptyMissingMedia();
-    for (const chat of chats.filter((item) => !isOld(item))) await this.handleRecentChat({ chat, summary, missing });
+    for (const status of this.appConfig.getTouchTargetStatuses()) await this.runStatusPass({ status, summary, missing });
 
     await this.telegramService.sendOwnerMessage(formatMorningSummary(summary));
     if (hasMissingMedia(missing)) await sendMissingMediaReport({ missing, telegramService: this.telegramService, ownerBot: this.ownerBot });
   }
 
-  private async handleRecentChat(params: { chat: ChatListItem; summary: MorningSummary; missing: ReturnType<typeof emptyMissingMedia> }): Promise<void> {
+  /** One status: its old chats are closed (never the new-bot ones, owner 2026-11-27) and the recent ones are touched. */
+  private async runStatusPass(params: { status: string; summary: MorningSummary; missing: MissingMediaState }): Promise<void> {
+    const cutoff = getClosingCutoff(new Date());
+    const chats = await listChatsInStatus({ chatListService: this.sitniksChatListService, status: params.status });
+    const isOld = (chat: ChatListItem): boolean => new Date(chat.lastMessageCreatedAt).getTime() < cutoff.getTime();
+    const closes = params.status !== NEW_BOT_STATUS;
+
+    if (closes) for (const chat of chats.filter(isOld)) await this.closeChat({ chat, summary: params.summary });
+    for (const chat of chats.filter((item) => !isOld(item))) await this.handleRecentChat({ chat, summary: params.summary, missing: params.missing, closes });
+  }
+
+  private async handleRecentChat(params: { chat: ChatListItem; summary: MorningSummary; missing: MissingMediaState; closes: boolean }): Promise<void> {
     try {
       const result = await this.touchChatService.processChat({ chat: params.chat, pass: 'morning' });
       if (result.touched) params.summary.touched += 1;
       recordMissingMedia({ missing: params.missing, chat: params.chat, result });
-      if (result.hasUnansweredTouch) await this.closeChat({ chat: params.chat, summary: params.summary });
+      if (result.hasUnansweredTouch && params.closes) await this.closeChat({ chat: params.chat, summary: params.summary });
     } catch (error) {
       params.summary.failed += 1;
       this.logger.warn(`Morning pass failed for chat ${params.chat.id}: ${(error as Error).message}`);

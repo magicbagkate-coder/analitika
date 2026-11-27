@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { TARGET_STATUS } from '../evaluation/evaluation.constants';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { TouchLogService } from '../touch-log/touch-log.service';
-import { APPROVED_TOUCHES_REQUIRED, MESSAGES_TO_READ } from './touch.constants';
+import { MESSAGES_TO_READ, TEST_STATUS } from './touch.constants';
 import { readChatTouchFacts, type ChatTouchFacts } from './touch-chat-facts';
 import { decideTouch, type TouchDecision } from './touch-decision';
 import { formatDryRunTouch, type MissingVideoChat, type SkippedChat } from './touch-messages';
@@ -66,7 +65,7 @@ export class TouchChatService {
       readSeenAt: attempt?.readSeenAt ?? null,
       // The "client has not answered the last touch" rule is for real chats only; in the test status the staff
       // set the chats up again on purpose (owner, 2026-11-26). The morning pass still gets the real answer below.
-      hasUnansweredTouch: hasUnansweredTouch && params.chat.status === TARGET_STATUS,
+      hasUnansweredTouch: hasUnansweredTouch && params.chat.status !== TEST_STATUS,
       initialSource: params.chat.initialSource,
     });
     const outcome = await this.act({ decision, chat: params.chat, anchorMessageId: facts.anchorMessageId, attempt, messages: response.data, force: params.force === true });
@@ -109,16 +108,15 @@ export class TouchChatService {
   /** Dry run only describes; live asks the owner for the first 30 real touches, then sends by itself. */
   private async deliver(attempt: TouchAttemptEntity): Promise<void> {
     if (this.appConfig.getTouchMode() === 'dry-run') return this.describeDryRun(attempt);
-    if (await this.needsApproval(attempt)) return this.touchApprovalService.requestApproval(attempt);
+    if (this.needsApproval(attempt)) return this.touchApprovalService.requestApproval(attempt);
 
     const won = await this.touchLogService.claimState({ id: attempt.id, from: ['watching'], to: 'sending' });
-    if (won) await this.touchSenderService.sendTouch({ attempt, announce: attempt.sourceStatus !== TARGET_STATUS });
+    if (won) await this.touchSenderService.sendTouch({ attempt, announce: attempt.sourceStatus === TEST_STATUS });
   }
 
-  /** Only touches in the real status are approved by hand (the first 30); the test status sends by itself (owner, 2026-11-26). */
-  private async needsApproval(attempt: TouchAttemptEntity): Promise<boolean> {
-    if (attempt.sourceStatus !== TARGET_STATUS) return false;
-    return (await this.touchLogService.countMadeTouches(TARGET_STATUS)) < APPROVED_TOUCHES_REQUIRED;
+  /** Touches in real statuses are approved by hand until the owner says «начали»; the test status sends by itself (owner, 2026-11-26/27). */
+  private needsApproval(attempt: TouchAttemptEntity): boolean {
+    return attempt.sourceStatus !== TEST_STATUS && this.appConfig.getTouchApprovalRequired();
   }
 
   private async describeDryRun(attempt: TouchAttemptEntity): Promise<void> {
@@ -148,14 +146,13 @@ export class TouchChatService {
   /** The dialog says no touch: the reason is kept, and shown to the owner while she still checks these decisions. */
   private async skipByMeaning(params: { attempt: TouchAttemptEntity; reason: string }): Promise<Omit<ProcessChatResult, 'hasUnansweredTouch'>> {
     await this.touchLogService.markSkippedByMeaning({ id: params.attempt.id, reason: params.reason });
-    const skipped = (await this.isOwnerChecking(params.attempt)) ? { chatId: params.attempt.chatId, clientName: params.attempt.clientName, reason: params.reason, attemptId: params.attempt.id } : null;
+    const skipped = this.isOwnerChecking(params.attempt) ? { chatId: params.attempt.chatId, clientName: params.attempt.clientName, reason: params.reason, attemptId: params.attempt.id } : null;
     return { ...NOTHING_HAPPENED, skipped };
   }
 
-  /** The first 30 real touches, and every test-status one, are checked by the owner; after that the skipped list stops coming. */
-  private async isOwnerChecking(attempt: TouchAttemptEntity): Promise<boolean> {
-    if (attempt.sourceStatus !== TARGET_STATUS) return true;
-    return (await this.touchLogService.countMadeTouches(TARGET_STATUS)) < APPROVED_TOUCHES_REQUIRED;
+  /** While the owner approves touches by hand, and always in the test status, she also sees the clients that were skipped. */
+  private isOwnerChecking(attempt: TouchAttemptEntity): boolean {
+    return attempt.sourceStatus === TEST_STATUS || this.appConfig.getTouchApprovalRequired();
   }
 
   private async createAttempt(params: ActParams & { readSeenAt: Date | null }): Promise<TouchAttemptEntity> {

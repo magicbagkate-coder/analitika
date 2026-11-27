@@ -30,11 +30,6 @@ export class TouchLogService {
     return this.repository.findOne({ where: { chatId, state: In(TOUCH_MADE_STATES) }, order: { touchedAt: 'DESC' } });
   }
 
-  /** Touches sent in the real status — the owner approves the first 30 of them by hand. */
-  async countMadeTouches(sourceStatus: string): Promise<number> {
-    return this.repository.count({ where: { sourceStatus, state: In(TOUCH_MADE_STATES) } });
-  }
-
   async createWatching(attempt: NewTouchAttempt): Promise<TouchAttemptEntity> {
     return this.repository.save(this.repository.create({ ...attempt, state: 'watching' }));
   }

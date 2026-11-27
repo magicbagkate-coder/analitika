@@ -8,6 +8,7 @@ import { DELAY_BETWEEN_REQUESTS_MS, MAX_TOUCH_AGE_HOURS } from './touch.constant
 import { TouchChatService } from './touch-chat.service';
 import { sendMissingMediaReport } from './send-missing-media-report';
 import { emptyMissingMedia, hasMissingMedia, recordMissingMedia } from './touch-missing';
+import type { ChatListItem } from '../sitniks-chat-list/sitniks-chat-list.types';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -28,11 +29,11 @@ export class TouchTickService {
   ) {}
 
   async runTick(): Promise<void> {
-    const chats = await listChatsInStatus({
-      chatListService: this.sitniksChatListService,
-      status: this.appConfig.getTouchTargetStatus(),
-      lastMessageAfter: new Date(Date.now() - MAX_TOUCH_AGE_HOURS * HOUR_MS),
-    });
+    const chats: ChatListItem[] = [];
+    for (const status of this.appConfig.getTouchTargetStatuses()) {
+      const inStatus = await listChatsInStatus({ chatListService: this.sitniksChatListService, status, lastMessageAfter: new Date(Date.now() - MAX_TOUCH_AGE_HOURS * HOUR_MS) });
+      chats.push(...inStatus);
+    }
 
     const missing = emptyMissingMedia();
     let failed = 0;

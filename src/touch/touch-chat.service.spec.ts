@@ -9,7 +9,7 @@ function managerMessage(params: { viewed: boolean; minutesAgo: number }): ChatMe
   return { id: 'm1', sentBy: 'acc', managerName: 'Оля', text: 'x', createdAt: new Date(Date.now() - params.minutesAgo * 60_000).toISOString(), isViewedByUser: params.viewed };
 }
 
-type Setup = { messages: ChatMessage[]; mode?: 'live' | 'dry-run'; attempt?: object | null; madeTouch?: object | null; made?: number; plan?: object };
+type Setup = { messages: ChatMessage[]; mode?: 'live' | 'dry-run'; attempt?: object | null; madeTouch?: object | null; approvalOff?: boolean; plan?: object };
 
 function build(setup: Setup) {
   const attemptRow = { id: 'a1', chatId: 'c1', anchorMessageId: 'm1', clientName: 'Іра', sourceStatus: 'Вибір товару', state: 'watching', missingAlertedAt: null, ...PLAN, ...(setup.attempt ?? {}) };
@@ -22,7 +22,6 @@ function build(setup: Setup) {
     markMissingAlerted: jest.fn().mockResolvedValue(undefined),
     savePlan: jest.fn().mockResolvedValue(undefined),
     findById: jest.fn().mockResolvedValue(attemptRow),
-    countMadeTouches: jest.fn().mockResolvedValue(setup.made ?? 0),
     claimState: jest.fn().mockResolvedValue(true),
     setState: jest.fn().mockResolvedValue(undefined),
     markSkippedByMeaning: jest.fn().mockResolvedValue(undefined),
@@ -31,7 +30,7 @@ function build(setup: Setup) {
   const approval = { requestApproval: jest.fn().mockResolvedValue(undefined) };
   const sender = { sendTouch: jest.fn().mockResolvedValue(undefined) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
-  const config = { getTouchMode: () => setup.mode ?? 'live', getTouchWaitMinutes: () => 60 };
+  const config = { getTouchMode: () => setup.mode ?? 'live', getTouchWaitMinutes: () => 60, getTouchApprovalRequired: () => setup.approvalOff !== true };
   const messages = { listMessages: jest.fn().mockResolvedValue({ data: setup.messages }) };
   const service = new TouchChatService(config as never, messages as never, log as never, planner as never, approval as never, sender as never, telegram as never);
   return { service, log, planner, approval, sender, telegram };
@@ -47,7 +46,7 @@ describe('TouchChatService', () => {
     expect(planner.planTouch).not.toHaveBeenCalled();
   });
 
-  it('asks the owner before the first touches are sent', async () => {
+  it('asks the owner before a touch is sent', async () => {
     const { service, approval, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO });
     const result = await service.processChat({ chat: CHAT, pass: 'regular' });
     expect(approval.requestApproval).toHaveBeenCalledTimes(1);
@@ -55,8 +54,8 @@ describe('TouchChatService', () => {
     expect(result.touched).toBe(true);
   });
 
-  it('sends by itself once thirty touches were approved in the real status', async () => {
-    const { service, approval, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, made: 30 });
+  it('sends by itself once the owner has switched the approval off', async () => {
+    const { service, approval, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, approvalOff: true });
     await service.processChat({ chat: CHAT, pass: 'regular' });
     expect(sender.sendTouch).toHaveBeenCalledTimes(1);
     expect(approval.requestApproval).not.toHaveBeenCalled();
@@ -85,6 +84,14 @@ describe('TouchChatService', () => {
     expect(approval.requestApproval).not.toHaveBeenCalled();
     expect(sender.sendTouch).not.toHaveBeenCalled();
     expect(result.hasUnansweredTouch).toBe(true);
+  });
+
+  it('asks the owner for a touch in the new-bot status as well', async () => {
+    const { service, approval, sender } = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: { ...READ_LONG_AGO, sourceStatus: 'Новий БОТ' } });
+    await service.processChat({ chat: { ...CHAT, status: 'Новий БОТ' }, pass: 'regular' });
+
+    expect(approval.requestApproval).toHaveBeenCalledTimes(1);
+    expect(sender.sendTouch).not.toHaveBeenCalled();
   });
 
   it('in the test status touches again even though the client did not answer the last touch', async () => {
@@ -144,11 +151,11 @@ describe('TouchChatService', () => {
     expect(sender.sendTouch).not.toHaveBeenCalled();
   });
 
-  it('stops listing skipped chats to the owner once thirty real touches are done', async () => {
-    const watched = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, made: 5, plan: { status: 'skip', skipReason: 'r', missing: [], plan: null } });
+  it('stops listing skipped chats to the owner once the approval is switched off', async () => {
+    const watched = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, plan: { status: 'skip', skipReason: 'r', missing: [], plan: null } });
     expect((await watched.service.processChat({ chat: CHAT, pass: 'regular' })).skipped).not.toBeNull();
 
-    const settled = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, made: 30, plan: { status: 'skip', skipReason: 'r', missing: [], plan: null } });
+    const settled = build({ messages: [managerMessage({ viewed: true, minutesAgo: 120 })], attempt: READ_LONG_AGO, approvalOff: true, plan: { status: 'skip', skipReason: 'r', missing: [], plan: null } });
     const result = await settled.service.processChat({ chat: CHAT, pass: 'regular' });
     expect(result.skipped).toBeNull();
     expect(settled.log.markSkippedByMeaning).toHaveBeenCalledTimes(1);

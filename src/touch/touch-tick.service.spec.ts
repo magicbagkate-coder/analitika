@@ -15,7 +15,7 @@ function build(results: Result[]) {
   const processChat = jest.fn();
   results.forEach((result) => processChat.mockResolvedValueOnce(result));
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
-  const config = { getTouchTargetStatus: () => 'Вибір товару' };
+  const config = { getTouchTargetStatuses: () => ['Вибір товару'] };
   const ownerBot = { sendWithButtons: jest.fn().mockResolvedValue(1) };
   const service = new TouchTickService(config as never, list as never, { processChat } as never, telegram as never, ownerBot as never);
   return { service, telegram, processChat, ownerBot };

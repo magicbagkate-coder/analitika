@@ -48,6 +48,14 @@ describe('TouchSenderService', () => {
     expect(tagger.tagTouch).toHaveBeenCalledWith({ chatId: 'c1', tag: expect.stringMatching(/^касание [12]$/) });
   });
 
+  it('tags a touch in the new-bot status too', async () => {
+    const attempt = { ...ATTEMPT, sourceStatus: 'Новий БОТ' } as unknown as TouchAttemptEntity;
+    const { service, tagger } = build(['sent', 'sent']);
+    await service.sendTouch({ attempt, announce: false });
+
+    expect(tagger.tagTouch).toHaveBeenCalledTimes(1);
+  });
+
   it('does not tag a touch made in the test status', async () => {
     const attempt = { ...ATTEMPT, sourceStatus: 'ТЕСТ КАТЯ' } as unknown as TouchAttemptEntity;
     const { service, tagger } = build(['sent', 'sent']);

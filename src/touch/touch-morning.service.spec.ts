@@ -8,12 +8,12 @@ function chat(id: string, lastMessageAt: string): ChatListItem {
   return { id, status: 'Вибір товару', tags: [], lastMessageCreatedAt: lastMessageAt, userName: id };
 }
 
-function build(params: { chats: ChatListItem[]; mode: 'live' | 'dry-run'; processResult?: object }) {
+function build(params: { chats: ChatListItem[]; mode: 'live' | 'dry-run'; processResult?: object; statuses?: string[] }) {
   const list = { listChats: jest.fn().mockResolvedValue({ data: params.chats, count: params.chats.length }) };
   const status = { changeStatus: jest.fn().mockResolvedValue(undefined) };
   const chatService = { processChat: jest.fn().mockResolvedValue({ hasUnansweredTouch: false, touched: false, noArticle: false, noVideo: [], skipped: null, ...params.processResult }) };
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
-  const config = { getTouchMode: () => params.mode, getTouchTargetStatus: () => 'Вибір товару', getTouchClosedStatus: () => 'Завершено' };
+  const config = { getTouchMode: () => params.mode, getTouchTargetStatuses: () => params.statuses ?? ['Вибір товару'], getTouchClosedStatus: () => 'Завершено' };
   const ownerBot = { sendWithButtons: jest.fn().mockResolvedValue(1) };
   const service = new TouchMorningService(config as never, list as never, status as never, chatService as never, telegram as never, ownerBot as never);
   return { service, status, chatService, telegram };
@@ -42,6 +42,19 @@ describe('TouchMorningService', () => {
     const { service, status } = build({ mode: 'live', chats: [chat('late', '2026-11-24T21:00:00.000Z')], processResult: { hasUnansweredTouch: true } });
     await service.runMorningPass();
     expect(status.changeStatus).toHaveBeenCalledWith({ chatId: 'late', status: 'Завершено' });
+  });
+
+  it('touches the new-bot chats but never closes them, old or late', async () => {
+    const { service, status, chatService } = build({
+      mode: 'live',
+      statuses: ['Новий БОТ'],
+      chats: [chat('old', '2026-11-24T10:00:00.000Z'), chat('late', '2026-11-24T21:00:00.000Z')],
+      processResult: { hasUnansweredTouch: true },
+    });
+    await service.runMorningPass();
+
+    expect(status.changeStatus).not.toHaveBeenCalled();
+    expect(chatService.processChat).toHaveBeenCalledTimes(1);
   });
 
   it('changes nothing in a dry run and only reports the numbers', async () => {

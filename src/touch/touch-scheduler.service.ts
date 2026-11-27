@@ -39,7 +39,7 @@ export class TouchSchedulerService implements OnModuleInit {
       this.logger.log('Touch bot is off (TOUCH_MODE is not set to dry-run or live) — nothing is scheduled');
       return;
     }
-    this.logger.log(`Touch bot starts in "${mode}" mode, target status "${this.appConfig.getTouchTargetStatus()}"`);
+    this.logger.log(`Touch bot starts in "${mode}" mode, target statuses "${this.appConfig.getTouchTargetStatuses().join(', ')}"`);
     this.touchApprovalService.startListening({ onForce: (attemptId) => this.touchForceService.forceTouch(attemptId) });
     setInterval(() => {
       this.checkClock().catch((error) => this.logger.error(`Touch clock failed: ${(error as Error).message}`));
