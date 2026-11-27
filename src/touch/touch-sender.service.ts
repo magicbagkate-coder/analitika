@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { TARGET_STATUS } from '../evaluation/evaluation.constants';
 import { SitniksChatMessagesService } from '../sitniks-chat-messages/sitniks-chat-messages.service';
 import { SitniksChatSendService } from '../sitniks-chat-send/sitniks-chat-send.service';
 import { TelegramService } from '../telegram/telegram.service';
@@ -6,6 +7,8 @@ import { TouchLogService } from '../touch-log/touch-log.service';
 import { TouchVideoStoreService } from '../touch-video-library/touch-video-store.service';
 import { MESSAGE_GAP_MS, VIDEO_CONFIRM_INTERVAL_MS, VIDEO_CONFIRM_MS } from './touch.constants';
 import { formatSendTrouble, formatTouchSent } from './touch-messages';
+import { getTouchTag } from './touch-time';
+import { TouchTaggerService } from './touch-tagger.service';
 import { hasAccountVideoSince } from './touch-video-confirm';
 import type { SendChatMessageResult } from '../sitniks-chat-send/sitniks-chat-send.types';
 import type { TouchAttemptEntity } from '../touch-log/touch-attempt.entity';
@@ -44,6 +47,7 @@ export class TouchSenderService {
     private readonly touchLogService: TouchLogService,
     private readonly telegramService: TelegramService,
     private readonly touchVideoStoreService: TouchVideoStoreService,
+    private readonly touchTaggerService: TouchTaggerService,
   ) {}
 
   async sendTouch(params: SendTouchParams): Promise<void> {
@@ -62,6 +66,8 @@ export class TouchSenderService {
     if (message.result.outcome !== 'sent') return this.finishWithTrouble({ attempt, step: message, nothingSent: false });
 
     await this.touchLogService.finishSend({ id: attempt.id, state: 'sent' });
+    // Only real clients are counted for the statistics, not the test status.
+    if (attempt.sourceStatus === TARGET_STATUS) await this.touchTaggerService.tagTouch({ chatId: attempt.chatId, tag: getTouchTag(new Date()) });
     if (params.announce) await this.tryTell(formatTouchSent({ chatId: attempt.chatId, clientName: attempt.clientName, videoFileNames: videos.map((video) => video.fileName) }));
   }
 

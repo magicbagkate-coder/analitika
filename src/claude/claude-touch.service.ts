@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { createAnthropicClient, withHardTimeout } from './anthropic-client';
 import { formatTranscript } from './transcript-formatter';
+import { findCopiedPhrase } from './touch-copy-check';
 import { findUnprovenDetails, type UsedDetail } from './touch-message-check';
 import type { ChatMessage } from '../sitniks-chat-messages/sitniks-chat-messages.types';
 
@@ -38,6 +39,8 @@ export type WriteTouchTextsParams = {
   forceTouch?: boolean;
   /** Her recent corrections of the bot's messages: what the bot wrote and what she made of it. */
   examples?: StyleExample[];
+  /** Messages of the newest touches already sent to other clients: the new one must sound different. */
+  recentTexts?: string[];
 };
 
 /**
@@ -57,20 +60,37 @@ export class ClaudeTouchService {
   async writeTouchTexts(params: WriteTouchTextsParams): Promise<TouchTexts> {
     const recent = params.messagesNewestFirst.slice(0, TRANSCRIPT_MESSAGES);
     const transcript = formatTranscript(recent);
+    const prompt = this.buildPrompt({ clientName: params.clientName, transcript, videoCount: params.videoCount, forceTouch: params.forceTouch === true, examples: params.examples ?? [], recentTexts: params.recentTexts ?? [] });
+    const written = await this.writeWithoutCopying({ prompt, transcript, videoCount: params.videoCount });
+    // Forced touch: a "no" from the model must not stop it — the plain message goes out instead.
+    const decided = params.forceTouch && !written.shouldTouch ? { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE } : written;
+    return this.proveDetails({ texts: decided, transcript, videoCount: params.videoCount });
+  }
+
+  private async askWriter(prompt: string): Promise<TouchTexts> {
     const response = await withHardTimeout(
       this.client.messages.create({
         model: this.appConfig.getAnthropicModel(),
         max_tokens: 700,
         tools: [this.buildTool()],
         tool_choice: { type: 'tool', name: TOUCH_TOOL_NAME },
-        messages: [{ role: 'user', content: this.buildPrompt({ clientName: params.clientName, transcript, videoCount: params.videoCount, forceTouch: params.forceTouch === true, examples: params.examples ?? [] }) }],
+        messages: [{ role: 'user', content: prompt }],
       }),
       'ClaudeTouchService.writeTouchTexts',
     );
-    const texts = this.extractTexts(response);
-    // Forced touch: a "no" from the model must not stop it — the plain message goes out instead.
-    const decided = params.forceTouch && !texts.shouldTouch ? { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE } : texts;
-    return this.proveDetails({ texts: decided, transcript, videoCount: params.videoCount });
+    return this.extractTexts(response);
+  }
+
+  /** The manager's own description of the bag must not come back in the touch (owner, 2026-11-27): one rewrite, then the plain message. */
+  private async writeWithoutCopying(params: { prompt: string; transcript: string; videoCount: number }): Promise<TouchTexts> {
+    const first = await this.askWriter(params.prompt);
+    const copied = first.shouldTouch ? findCopiedPhrase({ messageText: first.messageText, transcript: params.transcript }) : null;
+    if (copied === null) return first;
+
+    const second = await this.askWriter(`${params.prompt}\n\nУВАГА: у твоїй попередній версії була дослівна фраза з переписки: "${copied}". Напиши повідомлення ЗАНОВО, своїми словами, без жодної фрази менеджерки.`);
+    if (!second.shouldTouch || findCopiedPhrase({ messageText: second.messageText, transcript: params.transcript }) === null) return second;
+    this.logger.warn(`Touch message still copies the dialog ("${copied}"), sending the plain one`);
+    return { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE };
   }
 
   /** Bag details in the message must be proven by the dialog; otherwise the plain message goes out instead. */
@@ -84,7 +104,7 @@ export class ClaudeTouchService {
     return { shouldTouch: true, skipReason: '', messageText: params.videoCount > 1 ? PLAIN_MESSAGE_MANY : PLAIN_MESSAGE_ONE };
   }
 
-  private buildPrompt(params: { clientName: string; transcript: string; videoCount: number; forceTouch: boolean; examples: StyleExample[] }): string {
+  private buildPrompt(params: { clientName: string; transcript: string; videoCount: number; forceTouch: boolean; examples: StyleExample[]; recentTexts: string[] }): string {
     return [
       'Ти готуєш повторне "дотичне" повідомлення клієнтці магазину сумок MagicBag від імені менеджерки (жіночий рід).',
       'Клієнтка мовчить після розмови з менеджером; їй ось-ось надішлють відео сумки.',
@@ -123,9 +143,15 @@ export class ClaudeTouchService {
       'Якщо особливостей у повідомленні немає — usedDetails порожній масив.',
       'Жодних знижок і акцій: магазин їх не робить. Ніколи не пропонуй "надіслати ще фото" і не тисни.',
       'Мова повідомлення — ЗАВЖДИ ТІЛЬКИ УКРАЇНСЬКА, навіть якщо клієнтка пише російською: жодного російського слова. Звертання на "Ви".',
-      'Не більше одного емодзі. Без підпису й без привітання. Усе повідомлення до 350 символів.',
+      'НЕ КОПІЮЙ МЕНЕДЖЕРКУ. Не бери готових фраз з її опису сумки (на кшталт "елегантна шкіряна сумка — чудове поєднання комфорту, стилю та',
+      'практичності"): клієнтка це вже читала, і повтор виглядає як лінь. Якщо згадуєш особливість — одним-двома своїми словами, інакше, ніж менеджерка.',
+      'КОЖНЕ ПОВІДОМЛЕННЯ ЗВУЧИТЬ ПО-СВОЄМУ. Початок "Знайшла для Вас чудовий відеоогляд цієї сумочки" можна лишити, а ДАЛІ — нова жива думка,',
+      'інші слова й інше закінчення, ніж у вже надісланих іншим клієнткам (список нижче). Тон як у виправленнях власниці: коротко, тепло, по-людськи,',
+      'не шаблонно ("створена для вас", "створена щоб вражати", "допомогти з оформленням замовлення?").',
+      'Не більше двох емодзі. Без підпису й без привітання. Усе повідомлення до 350 символів.',
       '',
       ...this.buildExamplesBlock(params.examples),
+      ...this.buildRecentBlock(params.recentTexts),
       params.videoCount > 1 ? MANY_VIDEOS_RULE.replace('{count}', String(params.videoCount)) : 'Надіслано одне відео — пиши про одну сумочку.',
       '',
       `Клієнтка: ${params.clientName}`,
@@ -143,6 +169,12 @@ export class ClaudeTouchService {
       ...lines,
       '',
     ];
+  }
+
+  /** What the other clients just got: the new message must not repeat any of it. */
+  private buildRecentBlock(recentTexts: string[]): string[] {
+    if (recentTexts.length === 0) return [];
+    return ['ВЖЕ НАДІСЛАНО ІНШИМ КЛІЄНТКАМ (не повторюй ці формулювання):', ...recentTexts.map((text) => `— "${text}"`), ''];
   }
 
   private buildTool(): Anthropic.Tool {

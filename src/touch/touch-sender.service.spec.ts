@@ -27,11 +27,12 @@ function build(results: Outcome[], chatMessages: object[] = [freshVideo('FILE1')
   const telegram = { sendOwnerMessage: jest.fn().mockResolvedValue(undefined) };
   const listMessages = jest.fn().mockResolvedValue({ data: chatMessages });
   const store = { buildSendUrl: jest.fn(async (fileId: string) => `https://server.example/touch-videos/${fileId}.mp4`) };
-  const service = new TouchSenderService({ sendMessage: send } as never, { listMessages } as never, log as never, telegram as never, store as never);
+  const tagger = { tagTouch: jest.fn().mockResolvedValue(undefined) };
+  const service = new TouchSenderService({ sendMessage: send } as never, { listMessages } as never, log as never, telegram as never, store as never, tagger as never);
   service.messageGapMs = 0;
   service.confirmMs = 30;
   service.confirmIntervalMs = 10;
-  return { service, send, log, telegram, listMessages };
+  return { service, send, log, telegram, listMessages, tagger };
 }
 
 function sentKinds(send: jest.Mock): string[] {
@@ -39,6 +40,22 @@ function sentKinds(send: jest.Mock): string[] {
 }
 
 describe('TouchSenderService', () => {
+  it('tags a touch made to a real client with the statistics tag', async () => {
+    const attempt = { ...ATTEMPT, sourceStatus: 'Вибір товару' } as unknown as TouchAttemptEntity;
+    const { service, tagger } = build(['sent', 'sent']);
+    await service.sendTouch({ attempt, announce: false });
+
+    expect(tagger.tagTouch).toHaveBeenCalledWith({ chatId: 'c1', tag: expect.stringMatching(/^касание [12]$/) });
+  });
+
+  it('does not tag a touch made in the test status', async () => {
+    const attempt = { ...ATTEMPT, sourceStatus: 'ТЕСТ КАТЯ' } as unknown as TouchAttemptEntity;
+    const { service, tagger } = build(['sent', 'sent']);
+    await service.sendTouch({ attempt, announce: false });
+
+    expect(tagger.tagTouch).not.toHaveBeenCalled();
+  });
+
   it('sends the video, then one message with the line and the question, and marks the touch sent', async () => {
     const { service, send, log } = build(['sent', 'sent']);
     await service.sendTouch({ attempt: ATTEMPT, announce: false });

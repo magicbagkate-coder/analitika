@@ -86,6 +86,12 @@ export class TouchLogService {
     return rows.map((row) => ({ original: row.originalText, corrected: row.correctedText }));
   }
 
+  /** The messages of the newest touches that went out — the writer must not repeat their wording. */
+  async findRecentTouchTexts(limit: number): Promise<string[]> {
+    const rows = await this.repository.find({ where: { state: In(TOUCH_MADE_STATES) }, order: { touchedAt: 'DESC' }, take: limit });
+    return rows.flatMap((row) => (row.messageText ? [row.messageText] : []));
+  }
+
   async finishSend(params: { id: string; state: TouchState }): Promise<void> {
     await this.repository.update(params.id, { state: params.state, touchedAt: new Date() });
   }

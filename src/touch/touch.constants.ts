@@ -24,3 +24,8 @@ export const VIDEO_CONFIRM_INTERVAL_MS = 3000;
 export const CHAT_PAGE_SIZE = 50;
 export const NOTES_TO_READ = 30;
 export const MESSAGES_TO_READ = 50;
+
+/** Tags that count the touches for the statistics (owner, 2026-11-27): a touch before 16:00 is the first, from 16:00 the second. */
+export const TOUCH_TAG_FIRST = 'касание 1';
+export const TOUCH_TAG_SECOND = 'касание 2';
+export const SECOND_TOUCH_START_HOUR = 16;

@@ -1,4 +1,4 @@
-import { getClosingCutoff, isInsideTouchWindow } from './touch-time';
+import { getClosingCutoff, getTouchTag, isInsideTouchWindow } from './touch-time';
 
 // Kyiv is UTC+2 in November.
 describe('isInsideTouchWindow', () => {
@@ -22,5 +22,14 @@ describe('getClosingCutoff', () => {
   it('follows the Kyiv day, not the UTC day, just after midnight', () => {
     // 00:30 Kyiv on 26.11 is still 22:30Z on 25.11.
     expect(getClosingCutoff(new Date('2026-11-25T22:30:00.000Z')).toISOString()).toBe('2026-11-25T20:00:00.000Z');
+  });
+});
+
+describe('getTouchTag', () => {
+  it('is the first touch before 16:00 Kyiv time and the second from 16:00', () => {
+    expect(getTouchTag(new Date('2026-11-25T07:00:00.000Z'))).toBe('касание 1'); // 09:00
+    expect(getTouchTag(new Date('2026-11-25T13:59:00.000Z'))).toBe('касание 1'); // 15:59
+    expect(getTouchTag(new Date('2026-11-25T14:00:00.000Z'))).toBe('касание 2'); // 16:00
+    expect(getTouchTag(new Date('2026-11-25T20:30:00.000Z'))).toBe('касание 2'); // 22:30
   });
 });

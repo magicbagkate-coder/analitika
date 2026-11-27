@@ -11,6 +11,8 @@ import type { PlannedVideo, TouchPlan } from '../touch-log/touch-log.types';
 
 /** How many of the owner's latest corrections the writer sees. */
 const RECENT_CORRECTIONS = 10;
+/** How many of the touches already sent the writer sees, to word the next one differently. */
+const RECENT_SENT_TEXTS = 12;
 
 export type TouchPlanResult = {
   status: 'ready' | 'no-article' | 'no-video' | 'skip';
@@ -49,8 +51,9 @@ export class TouchPlannerService {
       return file ? [{ fileId: file.fileId, fileName: file.fileName, article: item.article }] : [];
     });
     const examples = await this.touchLogService.findRecentCorrections(RECENT_CORRECTIONS);
+    const recentTexts = await this.touchLogService.findRecentTouchTexts(RECENT_SENT_TEXTS);
     // Claude reads the dialog first: a chat where the client has said no costs no compression and no video.
-    const decision = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length, forceTouch: params.forceTouch, examples });
+    const decision = await this.claudeTouchService.writeTouchTexts({ clientName: params.clientName, messagesNewestFirst: params.messagesNewestFirst, videoCount: videos.length, forceTouch: params.forceTouch, examples, recentTexts });
     if (!decision.shouldTouch) return { status: 'skip', skipReason: decision.skipReason, missing: [], plan: null };
 
     // The light copies are made now if the background round has not got to them yet; a failed one is sent as the original.
